@@ -1,27 +1,22 @@
 use std::io;
 use std::time::Duration;
 
+use rand::seq::SliceRandom;
 use shakmaty::{Chess, Color, Position, Setup};
 use shakmaty::uci::Uci;
-use rand::seq::SliceRandom;
+
+fn read_line() -> String {
+    let mut line = String::new();
+    io::stdin().read_line(&mut line).unwrap();
+    line.pop();
+    line
+}
 
 fn main() {
-    let mut stack: Vec<String> = vec![];
     let mut board = Chess::default();
 
     loop {
-        let mut line = String::new();
-
-        match stack.pop() {
-            None => {
-                io::stdin()
-                    .read_line(&mut line)
-                    .expect("Failed to read line");
-            }
-            Some(value) => {
-                line = value;
-            }
-        };
+        let line = read_line();
 
         let cmd = line.trim();
 
