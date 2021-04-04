@@ -1,9 +1,11 @@
 use std::io;
-use std::time::Duration;
 
-use rand::seq::SliceRandom;
 use shakmaty::{Chess, Color, Position, Setup};
 use shakmaty::uci::Uci;
+
+use crate::engine::choose_move;
+
+mod engine;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -73,33 +75,16 @@ fn main() {
                     infos[6].parse::<i32>().expect("Failed to parse winc")
                 };
 
-                let mut nanos_for_move: i64 =
-                    i64::from(time_difference + increment - 3_000) * 1_000_000;
+                let _: i64 =
+                    i64::from(time_difference + increment - 2_000) * 1_000_000;
 
-                if nanos_for_move < (increment * 800_000).into() {
-                    nanos_for_move = (increment * 800_000).into();
-                }
+                let depth: u8 = if board.legal_moves().len() < 20 { 6 } else { if board.legal_moves().len() < 30 { 5 } else { 4 } };
 
-                if nanos_for_move > 40_000_000 {
-                    nanos_for_move = 40_000_000;
-                }
+                //println!("Depth: {}, nanos: {}, {}, {}", depth, nanos_for_move, time_difference, increment);
 
-                if nanos_for_move > 1_700_000_000 {
-                    nanos_for_move -= 200_000_000 // Account for lag
-                } else {
-                    nanos_for_move = 500_000_000 // Minimum reasonable move time
-                }
+                let pair = choose_move(board.clone(), depth, is_black);
 
-                let _ = Duration::new(
-                    nanos_for_move as u64 / 1_000_000_000,
-                    (nanos_for_move % 1_000_000_000) as u32,
-                );
-
-                let legal_moves = board.legal_moves();
-
-                let m = &legal_moves.choose(&mut rand::thread_rng()).unwrap();
-
-                println!("bestmove {}", Uci::from_standard(&m));
+                println!("bestmove {}", pair);
             }
 
             _ => println!("Unknown command: {}", cmd),
