@@ -80,18 +80,18 @@ fn main() {
 
                 let w = board.legal_moves().len();
                 let depth: u8 = if w < 10 {
-                    8
+                    7
                 } else {
-                    if w < 20 { 7 } else {
-                        if w < 30 { 6 } else { 5 }
+                    if w < 20 { 6 } else {
+                        if w < 30 { 5 } else { 4 }
                     }
                 };
 
                 //println!("Depth: {}, nanos: {}, {}, {}", depth, nanos_for_move, time_difference, increment);
 
-                let pair = best_move(board.clone(), depth, is_black);
+                let pair = best_move(board.clone(), 5, is_black);
 
-                println!("bestmove {}", Uci::from_standard(&pair.unwrap()).to_string());
+                println!("bestmove {}", pair);
                 //println!("score {}", pair.1)
             }
 

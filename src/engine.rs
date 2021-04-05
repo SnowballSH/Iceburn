@@ -1,6 +1,7 @@
 use std::cmp::{max, min};
 
 use shakmaty::{Chess, Color, File, Move, Outcome, Position, Rank, Role, Setup, Square};
+use shakmaty::uci::Uci;
 
 const MATE_LOWER: i16 = i16::MIN + 2;
 const MATE_UPPER: i16 = i16::MAX - 2;
@@ -8,7 +9,8 @@ const MATE_UPPER: i16 = i16::MAX - 2;
 const BASE_ALPHA: i16 = i16::MIN + 1;
 const BASE_BETA: i16 = i16::MAX - 1;
 
-const PAWN_MAP: [i16; 64] = [0, 0, 0, 0, 0, 0, 0, 0,
+const PAWN_MAP: [i16; 64] = [
+    0, 0, 0, 0, 0, 0, 0, 0,
     50, 50, 50, 50, 50, 50, 50, 50,
     10, 10, 20, 30, 30, 20, 10, 10,
     5, 5, 10, 25, 25, 10, 5, 5,
@@ -16,6 +18,39 @@ const PAWN_MAP: [i16; 64] = [0, 0, 0, 0, 0, 0, 0, 0,
     5, -5, -10, 0, 0, -10, -5, 5,
     5, 10, 10, -20, -20, 10, 10, 5,
     0, 0, 0, 0, 0, 0, 0, 0
+];
+
+const KNIGHT_MAP: [i16; 64] = [
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    -40, -20, 0, 0, 0, 0, -20, -40,
+    -30, 0, 10, 15, 15, 10, 0, -30,
+    -30, 5, 15, 20, 20, 15, 5, -30,
+    -30, 0, 15, 20, 20, 15, 0, -30,
+    -30, 5, 10, 15, 15, 10, 5, -30,
+    -40, -20, 0, 5, 5, 0, -20, -40,
+    -50, -40, -30, -30, -30, -30, -40, -50
+];
+
+const BISHOP_MAP: [i16; 64] = [
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    -10, 0, 0, 0, 0, 0, 0, -10,
+    -10, 0, 5, 10, 10, 5, 0, -10,
+    -10, 5, 5, 10, 10, 5, 5, -10,
+    -10, 0, 10, 10, 10, 10, 0, -10,
+    -10, 10, 10, 10, 10, 10, 10, -10,
+    -10, 5, 0, 0, 0, 0, 5, -10,
+    -20, -10, -10, -10, -10, -10, -10, -20,
+];
+
+const ROOK_MAP: [i16; 64] = [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    5, 10, 10, 10, 10, 10, 10, 5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5,
+    0, 0, 0, 5, 5, 0, 0, 0
 ];
 
 fn get(square: Square, is_black: bool) -> usize {
@@ -41,8 +76,11 @@ fn get(square: Square, is_black: bool) -> usize {
     if is_black { 64 - 8 * (s >> 3) + s % 8 - 8 } else { s }
 }
 
-pub fn best_move(board: Chess, depth: u8, is_black: bool) -> Option<Move> {
-    minimax_root(depth, board, is_black)
+pub fn best_move(board: Chess, depth: u8, is_black: bool) -> String {
+    match minimax_root(depth, board, is_black) {
+        Some(x) => Uci::from_standard(&x).to_string(),
+        None => "NULL".to_string(),
+    }
 }
 
 fn eval_board(board: Chess) -> i16 {
@@ -54,10 +92,10 @@ fn eval_board(board: Chess) -> i16 {
                 Outcome::Draw => 0,
                 Outcome::Decisive {
                     winner: Color::White
-                } => MATE_LOWER,
+                } => MATE_UPPER,
                 Outcome::Decisive {
                     winner: Color::Black
-                } => MATE_UPPER,
+                } => MATE_LOWER,
             };
         }
         None => {
@@ -72,9 +110,18 @@ fn eval_board(board: Chess) -> i16 {
                 score += match piece.role {
                     Role::King => 20000,
                     Role::Queen => 900,
-                    Role::Rook => 500,
-                    Role::Bishop => 320,
-                    Role::Knight => 320,
+                    Role::Rook => {
+                        let s = 500 + ROOK_MAP[get(y.0, pib)];
+                        s
+                    },
+                    Role::Bishop => {
+                        let s = 320 + BISHOP_MAP[get(y.0, pib)];
+                        s
+                    }
+                    Role::Knight => {
+                        let s = 320 + KNIGHT_MAP[get(y.0, pib)];
+                        s
+                    }
                     Role::Pawn => {
                         let s = 100 + PAWN_MAP[get(y.0, pib)];
                         s
@@ -110,7 +157,7 @@ fn minimax(depth: u8, board: Chess, is_black: bool, original: bool,
            mut alpha: i16, mut beta: i16) -> i16 {
     let maximizing = is_black == original;
 
-    if depth == 0 || board.is_game_over() {
+    if depth == 0 || board.is_game_over() || board.legal_moves().len() == 0 {
         return eval_board(board) * if is_black { 1 } else { -1 };
     }
 
