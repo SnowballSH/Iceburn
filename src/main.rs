@@ -89,7 +89,7 @@ fn main() {
 
                 //println!("Depth: {}, nanos: {}, {}, {}", depth, nanos_for_move, time_difference, increment);
 
-                let pair = best_move(board.clone(), 5, is_black);
+                let pair = best_move(board.clone(), depth, is_black);
 
                 println!("bestmove {}", pair);
                 //println!("score {}", pair.1)
