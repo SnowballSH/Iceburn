@@ -6,6 +6,7 @@ use shakmaty::uci::Uci;
 use crate::engine::best_move;
 
 mod engine;
+mod eval;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -78,7 +79,7 @@ fn main() {
                 let _: i64 =
                     i64::from(time_difference + increment - 2_000) * 1_000_000;
 
-                let pair = best_move(board.clone(), 7, is_black);
+                let pair = best_move(board.clone(), 5, is_black);
 
                 println!("bestmove {}", pair);
                 //println!("score {}", pair.1)
