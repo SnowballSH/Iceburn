@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 shakmaty = "0.18.0"
+futures = "0.3.0"
 
 [profile.release]
 opt-level = 3

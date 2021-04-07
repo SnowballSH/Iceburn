@@ -3,6 +3,9 @@ use std::cmp::{max, min};
 use shakmaty::{Chess, Color, File, Move, Outcome, Position, Rank, Role, Setup, Square};
 use shakmaty::uci::Uci;
 
+use futures::future::{join_all};
+use futures::executor::block_on;
+
 const MATE_LOWER: i16 = i16::MIN + 2;
 const MATE_UPPER: i16 = i16::MAX - 2;
 
@@ -77,7 +80,7 @@ fn get(square: Square, is_black: bool) -> usize {
 }
 
 pub fn best_move(board: Chess, depth: u8, is_black: bool) -> String {
-    match minimax_root(depth, board, is_black) {
+    match block_on(minimax_root(depth, board, is_black)) {
         Some(x) => Uci::from_standard(&x).to_string(),
         None => "NULL".to_string(),
     }
@@ -134,20 +137,32 @@ fn eval_board(board: Chess) -> i16 {
     score
 }
 
-fn minimax_root(depth: u8, board: Chess, is_black: bool) -> Option<Move> {
+async fn search(b: Chess, depth: u8, is_black: bool) -> i16{
+    minimax(depth - 1, b, !is_black, is_black, BASE_ALPHA, BASE_BETA)
+}
+
+async fn minimax_root(depth: u8, board: Chess, is_black: bool) -> Option<Move> {
     let moves = board.legal_moves();
     let mut best_m = None;
     let mut best_v = MATE_LOWER;
+    let mut fut = Vec::with_capacity(moves.len());
 
-    for m in moves {
+    for m in &moves {
         let mut b = board.clone();
         b.play_unchecked(&m);
-        let score = minimax(depth - 1, b, !is_black, is_black, BASE_ALPHA, BASE_BETA);
-        //println!("{}: {}", m.to_string(), score);
+        let score = search(b, depth, is_black);
+        fut.push(score);
+    }
+
+    let mut i = 0;
+    let fs = join_all(fut).await;
+    for m in moves {
+        let score = fs[i];
         if score > best_v {
             best_v = score;
             best_m = Some(m);
         }
+        i += 1;
     }
 
     best_m

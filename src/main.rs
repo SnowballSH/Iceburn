@@ -3,7 +3,7 @@ use std::io;
 use shakmaty::{Chess, Color, Position, Setup};
 use shakmaty::uci::Uci;
 
-use crate::engine::{best_move};
+use crate::engine::best_move;
 
 mod engine;
 
@@ -78,18 +78,7 @@ fn main() {
                 let _: i64 =
                     i64::from(time_difference + increment - 2_000) * 1_000_000;
 
-                let w = board.legal_moves().len();
-                let depth: u8 = if w < 10 {
-                    7
-                } else {
-                    if w < 20 { 6 } else {
-                        if w < 30 { 5 } else { 4 }
-                    }
-                };
-
-                //println!("Depth: {}, nanos: {}, {}, {}", depth, nanos_for_move, time_difference, increment);
-
-                let pair = best_move(board.clone(), 5, is_black);
+                let pair = best_move(board.clone(), 7, is_black);
 
                 println!("bestmove {}", pair);
                 //println!("score {}", pair.1)
