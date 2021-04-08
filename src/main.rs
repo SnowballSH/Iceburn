@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::io;
 
 use shakmaty::{Chess, Color, Position, Setup};
 use shakmaty::uci::Uci;
 
-use crate::engine::best_move;
+use crate::engine::*;
 
 mod engine;
 mod eval;
@@ -17,6 +18,9 @@ fn read_line() -> String {
 
 fn main() {
     let mut board = Chess::default();
+    let mut searcher = Searcher {};
+
+    let mut times = 0;
 
     loop {
         let line = read_line();
@@ -79,10 +83,15 @@ fn main() {
                 let _: i64 =
                     i64::from(time_difference + increment - 2_000) * 1_000_000;
 
-                let pair = best_move(board.clone(), 5, is_black);
+                let pair = searcher.best_move(
+                    board.clone(),
+                    if times < 3 { 5 } else { 5 },
+                    is_black);
 
                 println!("bestmove {}", pair);
                 //println!("score {}", pair.1)
+
+                times += 1;
             }
 
             _ => println!("Unknown command: {}", cmd),
