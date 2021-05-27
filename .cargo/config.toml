@@ -1,0 +1,2 @@
+[target.cfg]
+rustflags = "-C target-cpu=native"
