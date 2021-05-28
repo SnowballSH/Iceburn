@@ -6,7 +6,8 @@ engine2 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn")
 
 game = chess.pgn.Game()
 game.headers["Event"] = "Iceburn Engine vs itself"
-game.headers["White"] = game.headers["Black"] = "Iceburn Engine"
+game.headers["White"] = "Iceburn Engine (Windows)"
+game.headers["Black"] = "Iceburn Engine (Linux)"
 
 node = game
 

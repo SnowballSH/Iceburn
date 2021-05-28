@@ -1,12 +1,13 @@
 use std::io;
 
-use chess::{Game, ChessMove, Color};
+use chess::{Game, ChessMove};
 
 mod searcher;
 mod eval;
 
 use searcher::*;
 use std::str::FromStr;
+use std::time::Duration;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -98,42 +99,13 @@ fn uci() {
                 );
                  */
 
-                let m = searcher.best_move(board.clone(), 4, board.side_to_move());
+                let m = searcher.search(board.clone(), Duration::new(8, 500));
 
-                println!("bestmove {}", m.unwrap().to_string());
+                println!("bestmove {}", m.0.to_string());
             }
 
             _ => println!("Unknown command: {}", cmd),
         };
-    }
-}
-
-fn test_() {
-    let mut game = Game::new();
-    let mut searcher1 = Searcher::default();
-    let mut searcher2 = Searcher::default();
-    for _ in 0..12 {
-        if game.clone().result().is_some() {
-            break;
-        }
-        let best_move_ = searcher1.best_move(game.clone(), 5, Color::White);
-        if let Some(m) = best_move_ {
-            game.make_move(m);
-            println!("{}", m.to_string());
-        } else {
-            break;
-        }
-
-        if game.clone().result().is_some() {
-            break;
-        }
-        let best_move_ = searcher2.best_move(game.clone(), 5, Color::Black);
-        if let Some(m) = best_move_ {
-            game.make_move(m);
-            println!("{}", m.to_string());
-        } else {
-            break;
-        }
     }
 }
 
