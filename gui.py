@@ -2,20 +2,25 @@ import chess.engine
 import chess.pgn
 
 engine1 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
-engine2 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn")
+engine2 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
+
+FEN = "3k4/8/8/8/8/8/8/RK6 w - - 0 1"
 
 game = chess.pgn.Game()
 game.headers["Event"] = "Iceburn Engine vs itself"
-game.headers["White"] = "Iceburn Engine (Windows)"
-game.headers["Black"] = "Iceburn Engine (Linux)"
+game.headers["White"] = "Iceburn Engine"
+game.headers["Black"] = "Iceburn Engine"
+game.headers["FEN"] = FEN
 
 node = game
 
 print("calculating...")
 
-board = chess.Board()
+board = chess.Board(fen=FEN)
+game.from_board(board)
 while not board.is_game_over():
     result = engine1.play(board, chess.engine.Limit())
+    print(result.info)
     board.push(result.move)
     print(board)
     print()
@@ -25,6 +30,7 @@ while not board.is_game_over():
         break
 
     result = engine2.play(board, chess.engine.Limit())
+    print(result.info)
     board.push(result.move)
     print(board)
     print()

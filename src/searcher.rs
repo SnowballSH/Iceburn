@@ -3,14 +3,15 @@
 // The sunfish rust port's search method
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use chess::{ChessMove, Game, MoveGen, Piece, GameResult};
+use chess::{Board, BoardStatus, ChessMove, MoveGen, Piece};
+use serde_json;
 
 use crate::eval::*;
-use std::str::FromStr;
 
-const TRANSPOSITION_TABLE_SIZE: usize = 10_000_000;
+const TRANSPOSITION_TABLE_SIZE: usize = 9_000_000;
 const QUIESCENCE_SEARCH_LIMIT: i32 = 130;
 const EVAL_ROUGHNESS: i32 = 10;
 const STOP_SEARCH: i32 = MATE_UPPER * 101;
@@ -36,21 +37,40 @@ pub struct Searcher {
 
 impl Default for Searcher {
     fn default() -> Self {
-        Searcher {
+        let mut s = Searcher {
             scores: HashMap::with_capacity(TRANSPOSITION_TABLE_SIZE),
             moves: HashMap::with_capacity(TRANSPOSITION_TABLE_SIZE),
             nodes: 0,
             now: Instant::now(),
             duration: Duration::new(4, 0),
+        };
+
+        let json = std::fs::read_to_string("./openings.json");
+
+        if let Ok(val) = json {
+            if let serde_json::Value::Object(mp) = serde_json::from_str(&*val).unwrap() {
+                mp.iter().for_each(|x| {
+                    s.scores.insert((Board::from_str(x.0.as_str()).unwrap().get_hash(), 40, true), Entry {
+                        lower: x.1.as_i64().unwrap() as i32,
+                        upper: x.1.as_i64().unwrap() as i32,
+                    });
+                });
+            } else {
+                eprintln!("File not in right format")
+            }
+        } else {
+            eprintln!("Unable to load opening file: openings.json");
         }
+
+        s
     }
 }
 
 impl Searcher {
-    fn q(&mut self, board_state: Game, gamma: i32, depth: i32, root: bool) -> i32 {
+    fn q(&mut self, board_state: Board, gamma: i32, depth: i32, root: bool) -> i32 {
         self.nodes += 1;
 
-        let ps = board_state.current_position();
+        let ps = board_state;
         let hs = ps.get_hash();
 
         let entry = *self
@@ -85,7 +105,7 @@ impl Searcher {
             let nb = ps.null_move();
             if let Some(x) = nb {
                 let score = -self.q(
-                    Game::new_with_board(x), 1 - gamma,
+                    x, 1 - gamma,
                     depth - 3, false);
                 if score == -STOP_SEARCH {
                     return STOP_SEARCH;
@@ -93,15 +113,14 @@ impl Searcher {
                 best = best.max(score);
             }
         } else if depth <= 0 {
-            let score = eval(board_state.clone());
+            let score = eval(board_state);
             best = best.max(score);
         }
 
         // Killer move
         if best <= gamma {
             if let Some(killer_move) = self.moves.get(&hs).copied() {
-                let mut nb = board_state.clone();
-                nb.make_move(killer_move);
+                let nb = board_state.make_move_new(killer_move);
                 if depth > 0 || eval(nb.clone()) >= QUIESCENCE_SEARCH_LIMIT {
                     let score = -self.q(
                         nb,
@@ -123,8 +142,7 @@ impl Searcher {
             // move ordering
             let mut move_vals: Vec<_> = moves
                 .map(|m| {
-                    let mut nb = board_state.clone();
-                    nb.make_move(m);
+                    let nb = board_state.make_move_new(m);
                     (-eval(nb), m)
                 })
                 .collect();
@@ -136,14 +154,13 @@ impl Searcher {
                     -val >= QUIESCENCE_SEARCH_LIMIT
                         &&
                         eval(board_state.clone()) - val > best) {
-                    let mut nb = board_state.clone();
-                    nb.make_move(m);
+                    let nb = board_state.make_move_new(m);
                     let score =
                         -self.q(nb, 1 - gamma, depth - 1, false);
                     if score == -STOP_SEARCH {
                         return STOP_SEARCH;
                     }
-                    best = std::cmp::max(best, score);
+                    best = best.max(score);
                     if best >= gamma {
                         // Save the move for pv construction and killer heuristic
                         if self.moves.len() >= TRANSPOSITION_TABLE_SIZE {
@@ -159,13 +176,9 @@ impl Searcher {
         }
 
         if best < gamma && best < 0 && depth > 0 {
-            if board_state.result() == Some(GameResult::Stalemate) {
+            if board_state.status() == BoardStatus::Stalemate {
                 best = 0
             }
-        }
-
-        if self.scores.len() >= TRANSPOSITION_TABLE_SIZE {
-            self.scores.clear();
         }
 
         if best >= gamma {
@@ -191,17 +204,18 @@ impl Searcher {
 
     pub fn search(
         &mut self,
-        board_state: Game,
+        board_state: Board,
         duration: Duration,
-    ) -> (ChessMove, i32, i32) {
+        is_opening: bool,
+    ) -> ((ChessMove, i32, i32), u32, Duration) {
         self.nodes = 0;
         let mut reached_depth;
         self.now = Instant::now();
         self.duration = duration;
         let mut last_move = (ChessMove::from_str("e2e4").unwrap(), 0, 0);
 
-        // Bound depth to avoid infinite recursion in finished games
-        for depth in 1..99 {
+        // Bound depth to avoid infinite recursion in finished Boards
+        for depth in 1..if is_opening { 7 } else { 50 } {
             let mut lower = -MATE_UPPER;
             let mut upper = MATE_UPPER;
             while lower < upper - EVAL_ROUGHNESS {
@@ -235,20 +249,20 @@ impl Searcher {
 
             last_move = (
                 *self.moves
-                    .get(&board_state.current_position().get_hash())
+                    .get(&board_state.get_hash())
                     .expect("move not in table"),
                 self.scores
-                    .get(&(board_state.current_position().get_hash(), reached_depth, true))
+                    .get(&(board_state.get_hash(), reached_depth, true))
                     .expect("score not in table")
                     .lower,
                 reached_depth,
             );
 
-            if self.now.elapsed() > self.duration || score > MATE_LOWER {
+            if self.now.elapsed() > self.duration || score <= -MATE_LOWER || score == MATE_UPPER {
                 break;
             }
         }
 
-        last_move
+        (last_move, self.nodes, self.now.elapsed())
     }
 }
