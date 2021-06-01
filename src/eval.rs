@@ -73,8 +73,8 @@ const KING_MAP_MIDDLE: [i32; 64] = [
     -30,-40,-40,-50,-50,-40,-40,-30,
     -20,-30,-30,-40,-40,-30,-30,-20,
     -10,-20,-20,-20,-20,-20,-20,-10,
-     20, 20,  0,  0,  0,  0, 20, 20,
-     20, 30, 10,  0,  0, 10, 30, 20
+     20, 20, -5,  0,  0, -5, 20, 20,
+     20, 35, 15,  0,  0, 10, 60, 20
 ];
 
 // @formatter:off
@@ -144,6 +144,12 @@ fn inner_eval(board: Board) -> i32 {
             score -= to_val(p, b);
         }
     }
+
+    score -= board.pinned().popcnt() as i32 * 40;
+    score -= board.checkers().popcnt() as i32 * 40;
+
+    score += board.null_move().unwrap_or(Board::default()).pinned().popcnt() as i32 * 60;
+    score += board.null_move().unwrap_or(Board::default()).checkers().popcnt() as i32 * 60;
 
     score
 }

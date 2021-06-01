@@ -8,10 +8,10 @@ board = chess.Board()
 openings = {}
 
 
-def iter_(bo: chess.Board, depth=3):
+def iter_(bo: chess.Board, depth=4):
     if depth == 0:
         return
-    val: chess.engine.PovScore = stockfish.analyse(bo, chess.engine.Limit(0.15))["score"]
+    val: chess.engine.PovScore = stockfish.analyse(bo, chess.engine.Limit(0.05 * (5 - depth)))["score"]
     value = val.white().score(mate_score=52232)
     openings[bo.fen()] = value
     if abs(value) > 90:

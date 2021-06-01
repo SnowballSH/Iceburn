@@ -5,6 +5,7 @@ use std::time::Duration;
 use chess::{ChessMove, Color, Game};
 
 use searcher::*;
+
 use crate::eval::MATE_UPPER;
 
 mod searcher;
@@ -21,8 +22,6 @@ fn uci() {
     let mut board = Game::new();
 
     let mut searcher = Searcher::default();
-
-    let mut amount_moves: usize = 0;
 
     loop {
         let line = read_line();
@@ -60,7 +59,6 @@ fn uci() {
                     } else {
                         &cmd
                     };
-                    amount_moves = 10;
                     fenpart.split(" ").collect::<Vec<&str>>()[2..].join(" ")
                 } else {
                     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".to_string()
@@ -74,7 +72,35 @@ fn uci() {
             }
 
             "go" => {
-                let m = searcher.search(board.current_position(), Duration::new(18, 0), amount_moves < 4);
+                let params: Vec<&str> = cmd.split(' ').collect();
+
+                let time: u64 = if params.len() < 9 {
+                    4_000
+                } else if board.side_to_move() == Color::Black {
+                    params[4].parse().expect("Failed to parse btime")
+                } else {
+                    params[2].parse().expect("Failed to parse wtime")
+                };
+
+                let increment: u64 = if params.len() < 9 {
+                    0
+                } else if board.side_to_move() == Color::Black {
+                    params[8].parse().expect("Failed to parse binc")
+                } else {
+                    params[6].parse().expect("Failed to parse winc")
+                };
+
+                let nanos_for_move =
+                    (1_500.max(time / 20) + increment) * 1_000;
+
+                let time_for_move = Duration::new(
+                    nanos_for_move as u64 / 1_000_000_000,
+                    (nanos_for_move % 1_000_000_000) as u32).max(Duration::new(2, 0));
+
+                println!("{:?} {} {}", time_for_move, time, increment);
+
+                let m = searcher.search(board.current_position(), time_for_move,
+                                        50);
 
                 println!("info depth {} score cp {} time {:?} nodes {} pv",
                          m.0.2,
@@ -82,8 +108,6 @@ fn uci() {
                          m.2,
                          m.1,
                 );
-
-                amount_moves += 1;
 
                 if m.0.1 == -MATE_UPPER {
                     println!("resign");

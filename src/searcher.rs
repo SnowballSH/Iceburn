@@ -11,7 +11,7 @@ use serde_json;
 
 use crate::eval::*;
 
-const TRANSPOSITION_TABLE_SIZE: usize = 9_000_000;
+const TRANSPOSITION_TABLE_SIZE: usize = 15_000_000;
 const QUIESCENCE_SEARCH_LIMIT: i32 = 130;
 const EVAL_ROUGHNESS: i32 = 10;
 const STOP_SEARCH: i32 = MATE_UPPER * 101;
@@ -206,7 +206,7 @@ impl Searcher {
         &mut self,
         board_state: Board,
         duration: Duration,
-        is_opening: bool,
+        max_depth: i32,
     ) -> ((ChessMove, i32, i32), u32, Duration) {
         self.nodes = 0;
         let mut reached_depth;
@@ -214,8 +214,7 @@ impl Searcher {
         self.duration = duration;
         let mut last_move = (ChessMove::from_str("e2e4").unwrap(), 0, 0);
 
-        // Bound depth to avoid infinite recursion in finished Boards
-        for depth in 1..if is_opening { 7 } else { 50 } {
+        for depth in 1..max_depth {
             let mut lower = -MATE_UPPER;
             let mut upper = MATE_UPPER;
             while lower < upper - EVAL_ROUGHNESS {
