@@ -4,7 +4,7 @@ import chess.pgn
 engine1 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
 engine2 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
 
-FEN = "3k4/8/8/8/8/8/8/RK6 w - - 0 1"
+FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 game = chess.pgn.Game()
 game.headers["Event"] = "Iceburn Engine vs itself"

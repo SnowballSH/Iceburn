@@ -11,9 +11,9 @@ use serde_json;
 
 use crate::eval::*;
 
-const TRANSPOSITION_TABLE_SIZE: usize = 15_000_000;
-const QUIESCENCE_SEARCH_LIMIT: i32 = 130;
-const EVAL_ROUGHNESS: i32 = 10;
+const TRANSPOSITION_TABLE_SIZE: usize = 10_000_000;
+const QUIESCENCE_SEARCH_LIMIT: i32 = 160;
+const EVAL_ROUGHNESS: i32 = 13;
 const STOP_SEARCH: i32 = MATE_UPPER * 101;
 
 #[derive(Clone, Copy)]
@@ -30,6 +30,7 @@ const DEFAULT_ENTRY: Entry = Entry {
 pub struct Searcher {
     pub scores: HashMap<(u64, i32, bool), Entry>,
     pub moves: HashMap<u64, ChessMove>,
+    pub book: HashMap<u64, ChessMove>,
     pub nodes: u32,
     now: Instant,
     duration: Duration,
@@ -40,6 +41,7 @@ impl Default for Searcher {
         let mut s = Searcher {
             scores: HashMap::with_capacity(TRANSPOSITION_TABLE_SIZE),
             moves: HashMap::with_capacity(TRANSPOSITION_TABLE_SIZE),
+            book: HashMap::with_capacity(500),
             nodes: 0,
             now: Instant::now(),
             duration: Duration::new(4, 0),
@@ -50,10 +52,8 @@ impl Default for Searcher {
         if let Ok(val) = json {
             if let serde_json::Value::Object(mp) = serde_json::from_str(&*val).unwrap() {
                 mp.iter().for_each(|x| {
-                    s.scores.insert((Board::from_str(x.0.as_str()).unwrap().get_hash(), 40, true), Entry {
-                        lower: x.1.as_i64().unwrap() as i32,
-                        upper: x.1.as_i64().unwrap() as i32,
-                    });
+                    s.book.insert(Board::from_str(x.0.as_str()).unwrap().get_hash(),
+                                   x.1.as_str().unwrap().parse().unwrap());
                 });
             } else {
                 eprintln!("File not in right format")
@@ -101,7 +101,7 @@ impl Searcher {
                     ps.pieces(Piece::Knight) |
                     ps.pieces(Piece::Rook) |
                     ps.pieces(Piece::Queen)
-            )).0 != 0 {
+            )).popcnt() != 0 {
             let nb = ps.null_move();
             if let Some(x) = nb {
                 let score = -self.q(
@@ -162,7 +162,6 @@ impl Searcher {
                     }
                     best = best.max(score);
                     if best >= gamma {
-                        // Save the move for pv construction and killer heuristic
                         if self.moves.len() >= TRANSPOSITION_TABLE_SIZE {
                             self.moves.clear();
                         }
@@ -179,6 +178,10 @@ impl Searcher {
             if board_state.status() == BoardStatus::Stalemate {
                 best = 0
             }
+        }
+
+        if self.moves.len() >= TRANSPOSITION_TABLE_SIZE {
+            self.moves.clear();
         }
 
         if best >= gamma {
@@ -214,6 +217,10 @@ impl Searcher {
         self.duration = duration;
         let mut last_move = (ChessMove::from_str("e2e4").unwrap(), 0, 0);
 
+        if let Some(book) = self.book.get(&board_state.get_hash()) {
+            return ((*book, 100, 50), 0, self.now.elapsed());
+        }
+
         for depth in 1..max_depth {
             let mut lower = -MATE_UPPER;
             let mut upper = MATE_UPPER;
@@ -239,11 +246,12 @@ impl Searcher {
             }
             reached_depth = depth;
             println!(
-                "Reached depth {: <2} score {: <5} nodes {: <7} time {:?}",
+                "Reached depth {: <2} score {: <5} nodes {: <7} time {: <10} speed {} kn/s",
                 depth,
                 score,
                 self.nodes,
-                self.now.elapsed()
+                format!("{:?}", self.now.elapsed()),
+                self.nodes as f32 / self.now.elapsed().as_secs_f32() / 1000.0,
             );
 
             last_move = (

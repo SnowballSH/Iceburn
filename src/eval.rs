@@ -11,7 +11,7 @@ const PAWN_MAP: [i32; 64] = [
     50, 50, 50, 50, 50, 50, 50, 50,
     15, 10, 20, 36, 36, 20, 10, 15,
     11, 5, 10, 28, 28, 10,  5,  8,
-    9,  0, 15, 24, 21,  0,  0,  6,
+    9,  0, 15, 24, 21,  6,  0,  5,
     5, -5,-10, -3, -3,-10, -5,  5,
     5, 10, 10,-23,-23, 10, 10,  5,
     0,  0,  0,  0,  0,  0,  0,  0
@@ -147,9 +147,6 @@ fn inner_eval(board: Board) -> i32 {
 
     score -= board.pinned().popcnt() as i32 * 40;
     score -= board.checkers().popcnt() as i32 * 40;
-
-    score += board.null_move().unwrap_or(Board::default()).pinned().popcnt() as i32 * 60;
-    score += board.null_move().unwrap_or(Board::default()).checkers().popcnt() as i32 * 60;
 
     score
 }

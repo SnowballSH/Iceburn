@@ -1,30 +1,27 @@
-import chess.engine
+import chess.polyglot
 import json
-
-stockfish = chess.engine.SimpleEngine.popen_uci("stockfish")
 
 board = chess.Board()
 
-openings = {}
+with open("openings.json", "r") as f:
+    openings = json.load(f)
 
+with chess.polyglot.open_reader("openings.bin") as reader:
+    def iter_(board, depth):
+        if depth == 0:
+            return
+        for m in map(lambda x: x.move, reader.find_all(board)):
+            board.push(m)
+            if board.fen() not in openings:
+                try:
+                    openings[board.fen()] = max(reader.find_all(board), key=lambda x: x.weight).move.uci()
+                except:
+                    board.pop()
+                    continue
+            iter_(board, depth - 1)
+            board.pop()
 
-def iter_(bo: chess.Board, depth=4):
-    if depth == 0:
-        return
-    val: chess.engine.PovScore = stockfish.analyse(bo, chess.engine.Limit(0.05 * (5 - depth)))["score"]
-    value = val.white().score(mate_score=52232)
-    openings[bo.fen()] = value
-    if abs(value) > 90:
-        return
-    for m in bo.legal_moves:
-        nb = bo.copy()
-        nb.push(m)
-        iter_(nb, depth - 1)
-
-
-iter_(chess.Board())
+    iter_(board, 15)
 
 with open("openings.json", "w") as f:
     json.dump(openings, f, separators=(',', ':'))
-
-stockfish.close()

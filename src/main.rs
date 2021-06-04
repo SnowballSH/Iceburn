@@ -91,7 +91,7 @@ fn uci() {
                 };
 
                 let nanos_for_move =
-                    (1_500.max(time / 20) + increment) * 1_000;
+                    (1_500.max(time / 50) + increment) * 1_000;
 
                 let time_for_move = Duration::new(
                     nanos_for_move as u64 / 1_000_000_000,
