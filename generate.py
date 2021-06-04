@@ -8,6 +8,11 @@ with open("openings.json", "r") as f:
 
 with chess.polyglot.open_reader("openings.bin") as reader:
     def iter_(board, depth):
+        if board.fen() not in openings:
+            try:
+                openings[board.fen()] = max(reader.find_all(board), key=lambda x: x.weight).move.uci()
+            except:
+                pass
         if depth == 0:
             return
         for m in map(lambda x: x.move, reader.find_all(board)):
@@ -21,7 +26,7 @@ with chess.polyglot.open_reader("openings.bin") as reader:
             iter_(board, depth - 1)
             board.pop()
 
-    iter_(board, 15)
+    iter_(board, 17)
 
 with open("openings.json", "w") as f:
     json.dump(openings, f, separators=(',', ':'))
