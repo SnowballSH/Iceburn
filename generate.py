@@ -26,7 +26,7 @@ with chess.polyglot.open_reader("openings.bin") as reader:
             iter_(board, depth - 1)
             board.pop()
 
-    iter_(board, 17)
+    iter_(board, 18)
 
 with open("openings.json", "w") as f:
     json.dump(openings, f, separators=(',', ':'))

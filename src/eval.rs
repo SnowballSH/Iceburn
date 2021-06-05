@@ -1,9 +1,9 @@
-use chess::{ALL_PIECES, Board, BoardStatus, Color, File, Piece, Rank, Square};
+use chess::{ALL_PIECES, Board, BoardStatus, Color, Piece, Square};
 
 pub const MATE_UPPER: i32 = 32_000 + 8 * QUEEN_VALUE;
 pub const MATE_LOWER: i32 = 32_000 - 8 * QUEEN_VALUE;
 
-pub const QUEEN_VALUE: i32 = 2529;
+pub const QUEEN_VALUE: i32 = 1800;
 
 // @formatter:off
 const PAWN_MAP: [i32; 64] = [
@@ -90,26 +90,8 @@ const KING_MAP_END: [i32; 64] = [
 ];
 
 fn get(square: Square, is_black: bool) -> usize {
-    let s = match square.get_file() {
-        File::A => 0,
-        File::B => 1,
-        File::C => 2,
-        File::D => 3,
-        File::E => 4,
-        File::F => 5,
-        File::G => 6,
-        File::H => 7,
-    } + match square.get_rank() {
-        Rank::First => 7,
-        Rank::Second => 6,
-        Rank::Third => 5,
-        Rank::Fourth => 4,
-        Rank::Fifth => 3,
-        Rank::Sixth => 2,
-        Rank::Seventh => 1,
-        Rank::Eighth => 0,
-    } * 8;
-    if is_black { 64 - 8 * (s >> 3) + s % 8 - 8 } else { s }
+    let s = square.get_file().to_index() + 56 - square.get_rank().to_index() * 8;
+    if is_black { s ^ 56 } else { s }
 }
 
 fn to_val(p: Square, board: Board) -> i32 {
@@ -117,9 +99,9 @@ fn to_val(p: Square, board: Board) -> i32 {
     let k = get(p, pib);
     match board.piece_on(p).unwrap() {
         Piece::Pawn => 140 + PAWN_MAP[k],
-        Piece::Knight => 782 + KNIGHT_MAP[k],
-        Piece::Bishop => 830 + BISHOP_MAP[k],
-        Piece::Rook => 1289 + ROOK_MAP[k],
+        Piece::Knight => 586 + KNIGHT_MAP[k],
+        Piece::Bishop => 630 + BISHOP_MAP[k],
+        Piece::Rook => 929 + ROOK_MAP[k],
         Piece::Queen => QUEEN_VALUE + QUEEN_MAP[k],
         Piece::King => 32000 + (if board.combined().popcnt() < 9 { KING_MAP_END } else { KING_MAP_MIDDLE })[k],
     }
@@ -134,12 +116,12 @@ fn inner_eval(board: Board) -> i32 {
         let white = b.color_combined(Color::White);
         let black = b.color_combined(Color::Black);
 
-        let it = &mut (piece_bb & white).to_owned();
+        let it = piece_bb & white;
         for p in it {
             score += to_val(p, b);
         }
 
-        let it = &mut (piece_bb & black).to_owned();
+        let it = piece_bb & black;
         for p in it {
             score -= to_val(p, b);
         }
