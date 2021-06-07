@@ -11,7 +11,7 @@ use serde_json;
 
 use crate::eval::*;
 
-const TRANSPOSITION_TABLE_SIZE: usize = 14_000_000;
+const TRANSPOSITION_TABLE_SIZE: usize = 10_000_000;
 const QUIESCENCE_SEARCH_LIMIT: i32 = 130;
 const EVAL_ROUGHNESS: i32 = 12;
 const STOP_SEARCH: i32 = MATE_UPPER * 101;

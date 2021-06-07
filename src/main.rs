@@ -91,21 +91,23 @@ fn uci() {
                 };
 
                 let nanos_for_move =
-                    (1_500.max(time / 50) + increment) * 1_000;
+                    (1_500.max(time / 50) + increment) * 1_000_000;
 
                 let time_for_move = Duration::new(
                     nanos_for_move as u64 / 1_000_000_000,
-                    (nanos_for_move % 1_000_000_000) as u32).max(Duration::new(2, 0));
+                    (nanos_for_move % 1_000_000_000) as u32)
+                    .max(Duration::new(2, 0))
+                    .min(Duration::new(22, 0));
 
                 println!("{:?} {} {}", time_for_move, time, increment);
 
                 let m = searcher.search(board.current_position(), time_for_move,
                                         50);
 
-                println!("info depth {} score cp {} time {:?} nodes {} pv",
+                println!("info depth {} score cp {} time {} nodes {} pv",
                          m.0.2,
                          m.0.1 * if board.side_to_move() == Color::Black { -1 } else { 1 },
-                         m.2,
+                         m.2.as_millis(),
                          m.1,
                 );
 

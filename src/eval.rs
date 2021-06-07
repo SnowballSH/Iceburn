@@ -3,7 +3,7 @@ use chess::{ALL_PIECES, Board, BoardStatus, Color, Piece, Square};
 pub const MATE_UPPER: i32 = 32_000 + 8 * QUEEN_VALUE;
 pub const MATE_LOWER: i32 = 32_000 - 8 * QUEEN_VALUE;
 
-pub const QUEEN_VALUE: i32 = 1800;
+pub const QUEEN_VALUE: i32 = 970;
 
 // @formatter:off
 const PAWN_MAP: [i32; 64] = [
@@ -99,10 +99,10 @@ fn to_val(p: Square, board: Board) -> i32 {
     let pib = board.color_on(p).unwrap() == Color::Black;
     let k = get(p, pib);
     match board.piece_on(p).unwrap() {
-        Piece::Pawn => 140 + PAWN_MAP[k],
-        Piece::Knight => 586 + KNIGHT_MAP[k],
-        Piece::Bishop => 630 + BISHOP_MAP[k],
-        Piece::Rook => 929 + ROOK_MAP[k],
+        Piece::Pawn => 90 + PAWN_MAP[k],
+        Piece::Knight => 290 + KNIGHT_MAP[k],
+        Piece::Bishop => 320 + BISHOP_MAP[k],
+        Piece::Rook => 480 + ROOK_MAP[k],
         Piece::Queen => QUEEN_VALUE + QUEEN_MAP[k],
         Piece::King => 32000 + (if board.combined().popcnt() < 9 { KING_MAP_END } else { KING_MAP_MIDDLE })[k],
     }
