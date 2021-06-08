@@ -11,9 +11,9 @@ use serde_json;
 
 use crate::eval::*;
 
-const TRANSPOSITION_TABLE_SIZE: usize = 10_000_000;
+const TRANSPOSITION_TABLE_SIZE: usize = 5_000_000;
 const QUIESCENCE_SEARCH_LIMIT: i32 = 130;
-const EVAL_ROUGHNESS: i32 = 12;
+const EVAL_ROUGHNESS: i32 = 10;
 const STOP_SEARCH: i32 = MATE_UPPER * 101;
 
 #[derive(Clone, Copy)]
@@ -52,8 +52,10 @@ impl Default for Searcher {
         if let Ok(val) = json {
             if let serde_json::Value::Object(mp) = serde_json::from_str(&*val).unwrap() {
                 mp.iter().for_each(|x| {
-                    s.book.insert(Board::from_str(x.0.as_str()).unwrap().get_hash(),
-                                   x.1.as_str().unwrap().parse().unwrap());
+                    s.book.insert(
+                        Board::from_str(x.0.as_str()).unwrap().get_hash(),
+                        x.1.as_str().unwrap().parse().unwrap(),
+                    );
                 });
             } else {
                 eprintln!("File not in right format")
@@ -67,6 +69,10 @@ impl Default for Searcher {
 }
 
 impl Searcher {
+    fn eval(&mut self, board: Board) -> i32 {
+        eval(board)
+    }
+
     fn q(&mut self, board_state: Board, gamma: i32, depth: i32, root: bool) -> i32 {
         self.nodes += 1;
 
@@ -78,9 +84,7 @@ impl Searcher {
             .get(&(hs, depth.max(0), root))
             .unwrap_or(&DEFAULT_ENTRY);
 
-        if entry.lower >= gamma && (
-            !root || self.moves.get(&hs).is_some()
-        ) {
+        if entry.lower >= gamma && (!root || self.moves.get(&hs).is_some()) {
             return entry.lower;
         } else if entry.upper < gamma {
             return entry.upper;
@@ -95,25 +99,24 @@ impl Searcher {
         // Null Move
         if depth > 0
             && !root
-            && (
-            ps.color_combined(board_state.side_to_move()) & (
-                ps.pieces(Piece::Bishop) |
-                    ps.pieces(Piece::Knight) |
-                    ps.pieces(Piece::Rook) |
-                    ps.pieces(Piece::Queen)
-            )).popcnt() != 0 {
+            && (ps.color_combined(board_state.side_to_move())
+                & (ps.pieces(Piece::Bishop)
+                    | ps.pieces(Piece::Knight)
+                    | ps.pieces(Piece::Rook)
+                    | ps.pieces(Piece::Queen)))
+            .popcnt()
+                != 0
+        {
             let nb = ps.null_move();
             if let Some(x) = nb {
-                let score = -self.q(
-                    x, 1 - gamma,
-                    depth - 3, false);
+                let score = -self.q(x, 1 - gamma, depth - 3, false);
                 if score == -STOP_SEARCH {
                     return STOP_SEARCH;
                 }
                 best = best.max(score);
             }
         } else if depth <= 0 {
-            let score = eval(board_state);
+            let score = self.eval(board_state);
             best = best.max(score);
         }
 
@@ -121,13 +124,8 @@ impl Searcher {
         if best <= gamma {
             if let Some(killer_move) = self.moves.get(&hs).copied() {
                 let nb = board_state.make_move_new(killer_move);
-                if depth > 0 || eval(nb.clone()) >= QUIESCENCE_SEARCH_LIMIT {
-                    let score = -self.q(
-                        nb,
-                        1 - gamma,
-                        depth - 1,
-                        false,
-                    );
+                if depth > 0 || self.eval(nb.clone()) >= QUIESCENCE_SEARCH_LIMIT {
+                    let score = -self.q(nb, 1 - gamma, depth - 1, false);
                     if score == -STOP_SEARCH {
                         return STOP_SEARCH;
                     }
@@ -143,20 +141,18 @@ impl Searcher {
             let mut move_vals: Vec<_> = moves
                 .map(|m| {
                     let nb = board_state.make_move_new(m);
-                    (-eval(nb), m)
+                    (-self.eval(nb), m)
                 })
                 .collect();
             move_vals.sort_unstable();
 
             for (val, m) in move_vals {
                 if depth > 0
-                    || (
-                    -val >= QUIESCENCE_SEARCH_LIMIT
-                        &&
-                        eval(board_state.clone()) - val > best) {
+                    || (-val >= QUIESCENCE_SEARCH_LIMIT
+                        && self.eval(board_state.clone()) - val > best)
+                {
                     let nb = board_state.make_move_new(m);
-                    let score =
-                        -self.q(nb, 1 - gamma, depth - 1, false);
+                    let score = -self.q(nb, 1 - gamma, depth - 1, false);
                     if score == -STOP_SEARCH {
                         return STOP_SEARCH;
                     }
@@ -255,7 +251,8 @@ impl Searcher {
             );
 
             last_move = (
-                *self.moves
+                *self
+                    .moves
                     .get(&board_state.get_hash())
                     .expect("move not in table"),
                 self.scores
