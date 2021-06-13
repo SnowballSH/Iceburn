@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use chess::{Board, BoardStatus, ChessMove, MoveGen, Piece};
+use chess::{Board, BoardStatus, ChessMove, Color, MoveGen, Piece};
 use serde_json;
 
 use crate::eval::*;
@@ -52,8 +52,10 @@ impl Default for Searcher {
         if let Ok(val) = json {
             if let serde_json::Value::Object(mp) = serde_json::from_str(&*val).unwrap() {
                 mp.iter().for_each(|x| {
-                    s.book.insert(Board::from_str(x.0.as_str()).unwrap().get_hash(),
-                                   x.1.as_str().unwrap().parse().unwrap());
+                    s.book.insert(
+                        Board::from_str(x.0.as_str()).unwrap().get_hash(),
+                        x.1.as_str().unwrap().parse().unwrap(),
+                    );
                 });
             } else {
                 eprintln!("File not in right format")
@@ -78,9 +80,7 @@ impl Searcher {
             .get(&(hs, depth.max(0), root))
             .unwrap_or(&DEFAULT_ENTRY);
 
-        if entry.lower >= gamma && (
-            !root || self.moves.get(&hs).is_some()
-        ) {
+        if entry.lower >= gamma && (!root || self.moves.get(&hs).is_some()) {
             return entry.lower;
         } else if entry.upper < gamma {
             return entry.upper;
@@ -95,18 +95,17 @@ impl Searcher {
         // Null Move
         if depth > 0
             && !root
-            && (
-            ps.color_combined(board_state.side_to_move()) & (
-                ps.pieces(Piece::Bishop) |
-                    ps.pieces(Piece::Knight) |
-                    ps.pieces(Piece::Rook) |
-                    ps.pieces(Piece::Queen)
-            )).popcnt() != 0 {
+            && (ps.color_combined(board_state.side_to_move())
+                & (ps.pieces(Piece::Bishop)
+                    | ps.pieces(Piece::Knight)
+                    | ps.pieces(Piece::Rook)
+                    | ps.pieces(Piece::Queen)))
+            .popcnt()
+                != 0
+        {
             let nb = ps.null_move();
             if let Some(x) = nb {
-                let score = -self.q(
-                    x, 1 - gamma,
-                    depth - 3, false);
+                let score = -self.q(x, 1 - gamma, depth - 3, false);
                 if score == -STOP_SEARCH {
                     return STOP_SEARCH;
                 }
@@ -122,12 +121,7 @@ impl Searcher {
             if let Some(killer_move) = self.moves.get(&hs).copied() {
                 let nb = board_state.make_move_new(killer_move);
                 if depth > 0 || eval(nb.clone()) >= QUIESCENCE_SEARCH_LIMIT {
-                    let score = -self.q(
-                        nb,
-                        1 - gamma,
-                        depth - 1,
-                        false,
-                    );
+                    let score = -self.q(nb, 1 - gamma, depth - 1, false);
                     if score == -STOP_SEARCH {
                         return STOP_SEARCH;
                     }
@@ -150,13 +144,10 @@ impl Searcher {
 
             for (val, m) in move_vals {
                 if depth > 0
-                    || (
-                    -val >= QUIESCENCE_SEARCH_LIMIT
-                        &&
-                        eval(board_state.clone()) - val > best) {
+                    || (-val >= QUIESCENCE_SEARCH_LIMIT && eval(board_state.clone()) - val > best)
+                {
                     let nb = board_state.make_move_new(m);
-                    let score =
-                        -self.q(nb, 1 - gamma, depth - 1, false);
+                    let score = -self.q(nb, 1 - gamma, depth - 1, false);
                     if score == -STOP_SEARCH {
                         return STOP_SEARCH;
                     }
@@ -246,16 +237,17 @@ impl Searcher {
             }
             reached_depth = depth;
             println!(
-                "Reached depth {: <2} score {: <5} nodes {: <7} time {: <10} speed {} kn/s",
+                "info depth {: <2} score cp {: <5} nodes {: <7} time {: <10} speed {} kn/s",
                 depth,
                 score,
                 self.nodes,
-                format!("{:?}", self.now.elapsed()),
+                self.now.elapsed().as_millis(),
                 self.nodes as f32 / self.now.elapsed().as_secs_f32() / 1000.0,
             );
 
             last_move = (
-                *self.moves
+                *self
+                    .moves
                     .get(&board_state.get_hash())
                     .expect("move not in table"),
                 self.scores
