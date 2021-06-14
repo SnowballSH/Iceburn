@@ -10,8 +10,8 @@ use crate::eval::MATE_UPPER;
 use crate::nnue::nnue_init;
 
 mod eval;
-mod searcher;
 mod nnue;
+mod searcher;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -67,6 +67,17 @@ fn uci() {
                 for move_ in moves {
                     board.make_move(ChessMove::from_str(move_).unwrap());
                 }
+            }
+
+            "eval" => {
+                println!(
+                    "\n----------\nClassical {}\nNNUE {}\nFinal {}\n----------\n",
+                    eval::eval(board.current_position(), false),
+                    eval::eval(board.current_position(), true),
+                    (eval::eval(board.current_position(), true) as f32 * 0.8
+                        + eval::eval(board.current_position(), false) as f32 * 0.2)
+                        as i32
+                )
             }
 
             "go" => {

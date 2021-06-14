@@ -58,10 +58,10 @@ impl Default for Searcher {
                     );
                 });
             } else {
-                eprintln!("File not in right format")
+                println!("File not in right format")
             }
         } else {
-            eprintln!("Unable to load opening file: openings.json");
+            println!("Unable to load opening file: openings.json");
         }
 
         s
@@ -112,8 +112,9 @@ impl Searcher {
                 best = best.max(score);
             }
         } else if depth <= 0 {
-            let score = eval(board_state, true);
-            best = best.max(score);
+            let score =
+                eval(board_state, true) as f32 * 0.8 + eval(board_state, false) as f32 * 0.2;
+            best = best.max(score.round() as i32);
         }
 
         // Killer move
@@ -144,7 +145,8 @@ impl Searcher {
 
             for (val, m) in move_vals {
                 if depth > 0
-                    || (-val >= QUIESCENCE_SEARCH_LIMIT && eval(board_state.clone(), false) - val > best)
+                    || (-val >= QUIESCENCE_SEARCH_LIMIT
+                        && eval(board_state.clone(), false) - val > best)
                 {
                     let nb = board_state.make_move_new(m);
                     let score = -self.q(nb, 1 - gamma, depth - 1, false);

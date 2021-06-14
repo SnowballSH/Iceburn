@@ -2,7 +2,7 @@ import chess.engine
 import chess.pgn
 
 engine1 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
-engine2 = chess.engine.SimpleEngine.popen_uci("./iceburn_partial_nnue.exe")
+engine2 = chess.engine.SimpleEngine.popen_uci("./iceburn_a.exe")
 
 FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
