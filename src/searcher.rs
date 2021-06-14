@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use chess::{Board, BoardStatus, ChessMove, Color, MoveGen, Piece};
+use chess::{Board, BoardStatus, ChessMove, MoveGen, Piece};
 use serde_json;
 
 use crate::eval::*;
@@ -112,7 +112,7 @@ impl Searcher {
                 best = best.max(score);
             }
         } else if depth <= 0 {
-            let score = eval(board_state);
+            let score = eval(board_state, true);
             best = best.max(score);
         }
 
@@ -120,7 +120,7 @@ impl Searcher {
         if best <= gamma {
             if let Some(killer_move) = self.moves.get(&hs).copied() {
                 let nb = board_state.make_move_new(killer_move);
-                if depth > 0 || eval(nb.clone()) >= QUIESCENCE_SEARCH_LIMIT {
+                if depth > 0 || eval(nb.clone(), false) >= QUIESCENCE_SEARCH_LIMIT {
                     let score = -self.q(nb, 1 - gamma, depth - 1, false);
                     if score == -STOP_SEARCH {
                         return STOP_SEARCH;
@@ -137,14 +137,14 @@ impl Searcher {
             let mut move_vals: Vec<_> = moves
                 .map(|m| {
                     let nb = board_state.make_move_new(m);
-                    (-eval(nb), m)
+                    (-eval(nb, false), m)
                 })
                 .collect();
             move_vals.sort_unstable();
 
             for (val, m) in move_vals {
                 if depth > 0
-                    || (-val >= QUIESCENCE_SEARCH_LIMIT && eval(board_state.clone()) - val > best)
+                    || (-val >= QUIESCENCE_SEARCH_LIMIT && eval(board_state.clone(), false) - val > best)
                 {
                     let nb = board_state.make_move_new(m);
                     let score = -self.q(nb, 1 - gamma, depth - 1, false);

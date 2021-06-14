@@ -7,9 +7,11 @@ use chess::{ChessMove, Color, Game};
 use searcher::*;
 
 use crate::eval::MATE_UPPER;
+use crate::nnue::nnue_init;
 
 mod eval;
 mod searcher;
+mod nnue;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -126,5 +128,7 @@ fn uci() {
 }
 
 fn main() {
+    // init nnue
+    nnue_init("./nnue/nn-62ef826d1a6d.nnue");
     uci();
 }

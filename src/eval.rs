@@ -1,4 +1,5 @@
 use chess::{get_bishop_moves, get_file, Board, BoardStatus, Color, Piece, Square, ALL_PIECES};
+use crate::nnue::nnue_eval_fen;
 
 pub const MATE_UPPER: i32 = 32_000 + 8 * QUEEN_VALUE;
 pub const MATE_LOWER: i32 = 32_000 - 8 * QUEEN_VALUE;
@@ -215,10 +216,18 @@ fn bishop_activity(board: Board) -> i32 {
     score
 }
 
-pub fn eval(board: Board) -> i32 {
+pub fn eval(board: Board, nnue: bool) -> i32 {
     (match board.clone().status() {
         BoardStatus::Stalemate => 0,
-        BoardStatus::Ongoing => inner_eval(board),
+        BoardStatus::Ongoing => if nnue {
+            nnue_eval_fen(board.to_string().as_str()) * if board.side_to_move() == Color::Black {
+                -1
+            } else {
+                1
+            }
+        } else {
+            inner_eval(board)
+        },
         BoardStatus::Checkmate => {
             if board.side_to_move() == Color::Black {
                 MATE_UPPER

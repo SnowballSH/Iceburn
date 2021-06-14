@@ -1,0 +1,3 @@
+*.nnue linguist-vendored
+nnue/* linguist-vendored
+src/nnue_probe/* linguist-vendored
