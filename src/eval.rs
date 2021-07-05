@@ -221,7 +221,7 @@ pub fn eval(board: Board, nnue: bool) -> i32 {
         BoardStatus::Stalemate => 0,
         BoardStatus::Ongoing => {
             if nnue {
-                nnue_eval_fen(board.to_string().as_str())
+                (nnue_eval_fen(board.to_string().as_str()) as f32 * 0.7).round() as i32
                     * if board.side_to_move() == Color::Black {
                         -1
                     } else {

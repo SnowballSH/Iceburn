@@ -4,14 +4,14 @@ use std::time::Duration;
 
 use chess::{ChessMove, Color, Game};
 
-use searcher::*;
+use search::searcher::*;
 
 use crate::eval::MATE_UPPER;
 use crate::nnue::nnue_init;
 
 mod eval;
 mod nnue;
-mod searcher;
+mod search;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -23,7 +23,7 @@ fn read_line() -> String {
 fn uci() {
     let mut board = Game::new();
 
-    let mut searcher = Searcher::default();
+    let mut searcher = Searcher::new(99);
 
     loop {
         let line = read_line();
@@ -115,22 +115,9 @@ fn uci() {
                     .min(Duration::new(50, 0))
                 };
 
-                let m = searcher.search(board.current_position(), time_for_move, 50);
+                searcher.iterative_deepening(board.current_position(), time_for_move);
 
-                println!(
-                    "| depth {} score cp {} time {} nodes {} speed {} kn/s",
-                    m.0 .2,
-                    m.0 .1,
-                    m.2.as_millis(),
-                    m.1,
-                    m.1 as f32 / m.2.as_secs_f32() / 1000.0,
-                );
-
-                if m.0 .1 == -MATE_UPPER {
-                    println!("resign");
-                }
-
-                println!("bestmove {}", m.0 .0.to_string());
+                println!("bestmove {}", searcher.id_move.unwrap());
             }
 
             _ => println!("Unknown command: {}", cmd),
