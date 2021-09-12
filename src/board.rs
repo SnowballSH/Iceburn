@@ -1,3 +1,5 @@
+use std::mem::transmute;
+
 use Piece::*;
 
 use crate::moves::Move;
@@ -46,6 +48,18 @@ impl PieceType {
             PieceType::None => vec![],
         }
     }
+
+    pub fn symbol(self) -> char {
+        match self {
+            PieceType::Pawn => 'p',
+            PieceType::Knight => 'n',
+            PieceType::Bishop => 'b',
+            PieceType::Rook => 'r',
+            PieceType::Queen => 'q',
+            PieceType::King => 'k',
+            PieceType::None => '?',
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -67,6 +81,10 @@ pub enum Piece {
 }
 
 impl Piece {
+    pub const PT_TO_PIECE: [Piece; 16] = [
+        EP, WK, WP, WN, WB, WR, WQ, EP, EP, BK, BP, BN, BB, BR, BQ, EP,
+    ];
+
     #[inline]
     pub fn u8(self) -> u8 {
         self as u8
@@ -77,7 +95,6 @@ impl Piece {
         self as usize
     }
 
-    #[inline]
     pub fn piece_type(self) -> PieceType {
         match self {
             BP | WP => PieceType::Pawn,
@@ -89,6 +106,19 @@ impl Piece {
             EP | OB => PieceType::None,
         }
     }
+
+    pub fn color(self) -> Option<Color> {
+        match self {
+            BP | BB | BN | BR | BQ | BK => Some(Color::Black),
+            WP | WB | WN | WR | WQ | WK => Some(Color::White),
+            EP | OB => None,
+        }
+    }
+
+    #[inline]
+    pub fn from_pt_u8(pt: u8, color: Color) -> Self {
+        Self::PT_TO_PIECE[pt as usize | ((color as usize) << 3)]
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -96,6 +126,54 @@ pub struct Square(pub(crate) u8);
 
 impl Square {
     const OFF_BOARD_ENPASSANT: Square = Square(120);
+
+    #[inline]
+    pub fn shift(&self, amount: i16) -> Self {
+        Square((self.0 as i16 + amount) as u8)
+    }
+
+    pub fn is_attacked(&self, color: Color, board: &Board) -> bool {
+        for pt in ((PieceType::King as u8)..=(PieceType::Queen as u8)).rev() {
+            let piece = Piece::from_pt_u8(pt, color);
+
+            if pt == PieceType::Pawn as u8 {
+                let dir = 16 * (1 - 2 * color as i16);
+                for hdir in [1_i16, -1] {
+                    let to = self.0 as i16 + hdir + dir as i16;
+                    if to & 0x88 == 0 && board.board[to as usize] == piece {
+                        return true;
+                    }
+                }
+            } else {
+                // bishop, rook, queen
+                let slider = pt >= 4;
+                let dirs = unsafe { transmute::<u8, PieceType>(pt) }.offset();
+
+                for d in dirs {
+                    let mut to = self.0 as i16;
+
+                    'l: loop {
+                        to += d as i16;
+                        if to & 0x88 != 0 {
+                            break 'l;
+                        }
+
+                        if board.board[to as usize] != EP {
+                            if board.board[to as usize] == piece {
+                                return true;
+                            }
+                            break 'l;
+                        }
+                        if !slider {
+                            break 'l;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
 }
 
 /// Board
@@ -110,11 +188,17 @@ pub struct Board {
     pub piece_list: [Square; 13 * 10],
     pub piece_count: [usize; 14],
     pub move_stack: Vec<Move>,
+
+    pub pawn_ranks: (u8, u8),
+    pub promote_ranks: (u8, u8),
+    pub castling_rights: [u8; 128],
+    pub castling_bits: ([u8; 2], [u8; 2]),
+    pub king_location: (Square, Square),
 }
 
 impl Default for Board {
     fn default() -> Self {
-        Board {
+        let mut b = Board {
             board: Self::STARTBOARD0X88,
             turn: Color::White,
             enpassant: Square::OFF_BOARD_ENPASSANT,
@@ -123,7 +207,23 @@ impl Default for Board {
             piece_list: [Square(0); 13 * 10],
             piece_count: [0; 14],
             move_stack: Vec::with_capacity(64),
-        }
+
+            pawn_ranks: (0x60, 0x10),
+            promote_ranks: (0x00, 0x70),
+            castling_rights: [
+                7, 15, 15, 15, 3, 15, 15, 11, 13, 13, 13, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15,
+                15, 15, 15, 13, 13, 13, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 15, 15, 15, 13, 13,
+                13, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 15, 15, 15, 13, 13, 13, 13, 13, 13, 13,
+                13, 15, 15, 15, 15, 15, 15, 15, 15, 13, 13, 13, 13, 13, 13, 13, 13, 15, 15, 15, 15,
+                15, 15, 15, 15, 13, 13, 13, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 15, 15, 15, 13,
+                13, 13, 13, 13, 13, 13, 13, 13, 15, 15, 15, 12, 15, 15, 14, 13, 13, 13, 13, 13, 13,
+                13, 13,
+            ],
+            castling_bits: ([1, 2], [4, 8]),
+            king_location: (Square(0x04), Square(0x74)),
+        };
+        b.init_piece_list();
+        b
     }
 }
 
@@ -150,11 +250,31 @@ impl Board {
             if sq & 0x88 == 0 {
                 let pc = self.board[sq];
                 if pc != EP {
-                    self.piece_list[pc.usize() * 10 + self.piece_list[pc.usize()].0 as usize] =
+                    self.piece_list[pc.usize() * 10 + self.piece_count[pc.usize()]] =
                         Square(sq as u8);
-                    self.piece_list[pc.usize()].0 += 1;
+                    self.piece_count[pc.usize()] += 1;
                 }
             }
         }
+    }
+
+    pub fn make_move(&mut self, m: Move) {
+        let source = m.source();
+        let target = m.target();
+
+        let piece = self.board[source.0 as usize];
+
+        self.board[target.0 as usize] = piece;
+        self.board[source.0 as usize] = Piece::EP;
+
+        for index in 0..self.piece_count[piece.usize()] {
+            if self.piece_list[piece.usize() * 10 + index] == source {
+                self.piece_list[piece.usize() * 10 + index] = target;
+                break;
+            }
+        }
+
+        self.turn = self.turn.not();
+        self.fifty_move += 1;
     }
 }
