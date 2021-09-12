@@ -3,6 +3,7 @@ use std::mem::transmute;
 use Piece::*;
 
 use crate::moves::Move;
+use crate::utils::get_pair;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Color {
@@ -119,6 +120,15 @@ impl Piece {
     pub fn from_pt_u8(pt: u8, color: Color) -> Self {
         Self::PT_TO_PIECE[pt as usize | ((color as usize) << 3)]
     }
+
+    pub fn symbol(&self) -> char {
+        let o = self.piece_type().symbol();
+        if self.color() == Some(Color::White) {
+            o.to_ascii_uppercase()
+        } else {
+            o
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -220,7 +230,7 @@ impl Default for Board {
                 13, 13,
             ],
             castling_bits: ([1, 2], [4, 8]),
-            king_location: (Square(0x04), Square(0x74)),
+            king_location: (Square(0x74), Square(0x04)),
         };
         b.init_piece_list();
         b
@@ -241,6 +251,45 @@ impl Board {
         WR, WN, WB, WQ, WK, WB, WN, WR,  OB, OB, OB, OB, OB, OB, OB, OB,
     ];
 
+    pub fn symbols(&self) -> Vec<Vec<char>> {
+        let mut v = vec![vec![]];
+        for sq in 0..128 {
+            if sq & 0x88 == 0 {
+                let pc = self.board[sq];
+                if pc == EP {
+                    v.last_mut().unwrap().push(' ');
+                } else {
+                    v.last_mut().unwrap().push(pc.symbol());
+                }
+            }
+            if (sq + 1) % 16 == 0 {
+                v.push(vec![]);
+            }
+        }
+        v.pop();
+        v
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut s: String = self
+            .symbols()
+            .into_iter()
+            .map(|x| {
+                x.into_iter()
+                    .map(|y| y.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        s.push_str(&format!("\n{} to move", if self.turn == Color::White {
+            "White"
+        } else {
+            "Black"
+        }));
+        s
+    }
+
     /// https://www.chessprogramming.org/Piece-Lists
     pub fn init_piece_list(&mut self) {
         self.piece_count = [0; 14];
@@ -258,12 +307,27 @@ impl Board {
         }
     }
 
-    pub fn make_move(&mut self, m: Move) {
-        let source = m.source();
-        let target = m.target();
+    pub fn add_piece(&mut self, piece: Piece, square: Square) {
+        self.board[square.0 as usize] = piece;
+        self.piece_list[piece.usize() * 10 + self.piece_count[piece.usize()]] = square;
+        self.piece_count[piece.usize()] += 1;
+    }
 
-        let piece = self.board[source.0 as usize];
+    pub fn remove_piece(&mut self, piece: Piece, square: Square) {
+        let mut captured_index = 0;
+        for index in 0..self.piece_count[piece.usize()] {
+            if self.piece_list[piece.usize() * 10 + index] == square {
+                captured_index = index;
+                break;
+            }
+        }
 
+        self.piece_count[piece.usize()] -= 1;
+        self.piece_list[piece.usize() * 10 + captured_index] =
+            self.piece_list[piece.usize() * 10 + self.piece_count[piece.usize()]];
+    }
+
+    pub fn move_piece(&mut self, piece: Piece, source: Square, target: Square) {
         self.board[target.0 as usize] = piece;
         self.board[source.0 as usize] = Piece::EP;
 
@@ -273,8 +337,92 @@ impl Board {
                 break;
             }
         }
+    }
+
+    pub fn make_move(&mut self, m: Move) -> bool {
+        let source = m.source();
+        let target = m.target();
+        let captured = self.board[target.0 as usize];
+        let promoted = m.promote();
+
+        let piece = self.board[source.0 as usize];
+
+        self.move_piece(piece, source, target);
+
+        self.fifty_move += 1;
+
+        if m.is_capture() {
+            if captured != EP {
+                self.remove_piece(captured, target);
+            }
+            self.fifty_move = 0;
+        } else if self.board[target.0 as usize].piece_type() == PieceType::Pawn {
+            self.fifty_move = 0;
+        }
+
+        // TODO enpassant
+
+        if m.is_double_pawn_push() {
+            if self.turn == Color::White {
+                self.enpassant = target.shift(16);
+            } else {
+                self.enpassant = target.shift(-16);
+            }
+        } else if m.is_enpassant() {
+            if self.turn == Color::White {
+                self.board[target.0 as usize + 16] = EP;
+                self.remove_piece(BP, target.shift(16));
+            } else {
+                self.board[target.0 as usize - 16] = EP;
+                self.remove_piece(WP, target.shift(-16));
+            }
+        } else if m.is_castling() {
+            match target.0 {
+                // g1
+                0x76 => self.move_piece(WR, Square(0x77), Square(0x75)),
+                // c1
+                0x72 => self.move_piece(WR, Square(0x70), Square(0x73)),
+                // g8
+                0x06 => self.move_piece(BR, Square(0x07), Square(0x05)),
+                // c8
+                0x02 => self.move_piece(BR, Square(0x00), Square(0x03)),
+                _ => {}
+            }
+        }
+
+        if promoted != EP {
+            if self.turn == Color::White {
+                self.remove_piece(WP, target);
+            } else {
+                self.remove_piece(BP, target);
+            }
+            self.add_piece(promoted, target);
+        }
+
+        if self.board[target.0 as usize].piece_type() == PieceType::King {
+            if self.turn == Color::White {
+                self.king_location.0 = target;
+            } else {
+                self.king_location.1 = target;
+            }
+        }
+
+        self.castle &= self.castling_rights[source.0 as usize];
+        self.castle &= self.castling_rights[target.0 as usize];
 
         self.turn = self.turn.not();
-        self.fifty_move += 1;
+
+        /*
+        if get_pair(self.king_location, self.turn.not()).is_attacked(self.turn, self) {
+            self.take_back();
+            return false;
+        }
+         */
+
+        true
+    }
+
+    pub fn take_back(&mut self) {
+        todo!("Implement it")
     }
 }

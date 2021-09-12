@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::board::{Board, Piece, Square};
+use crate::board::{Board, Piece, Square, PieceType};
 use crate::utils::SQUARE_CHART;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -62,20 +62,38 @@ impl Move {
         )
     }
 
-    pub fn from_uci(s: Vec<u8>) -> Option<Move> {
+    pub fn from_uci(board: &Board, s: Vec<u8>) -> Option<Move> {
         let from = s[0] - 'a' as u8 + 16 * (8 - (s[1] - '0' as u8));
         let to = s[2] - 'a' as u8 + 16 * (8 - (s[3] - '0' as u8));
 
-        // TODO actual moves based on board
-        Some(Move::construct(
-            Square(from),
-            Square(to),
-            Piece::EP,
-            false,
-            false,
-            false,
-            false,
-        ))
+        let moves = board.gen_moves();
+
+        for m in moves {
+            let promoted;
+            if m.source().0 == from && m.target().0 == to {
+                if s.len() >= 5 {
+                    promoted = m.promote();
+                    if promoted != Piece::EP {
+                        if promoted.piece_type() == PieceType::Knight && s[4] == 'n' as u8 {
+                            return Some(m);
+                        } else if promoted.piece_type() == PieceType::Bishop && s[4] == 'b' as u8 {
+                            return Some(m);
+                        } else if promoted.piece_type() == PieceType::Rook && s[4] == 'r' as u8 {
+                            return Some(m);
+                        } else if promoted.piece_type() == PieceType::Queen && s[4] == 'q' as u8 {
+                            return Some(m);
+                        }
+                        // you cannot move a pawn to the other side without promoting! i.e. g7g8
+                        continue;
+                    }
+                }
+
+                // legal
+                return Some(m);
+            }
+        }
+
+        None
     }
 
     pub fn to_uci(&self) -> Vec<u8> {

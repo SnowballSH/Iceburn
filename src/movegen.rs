@@ -6,7 +6,7 @@ use crate::moves::Move;
 use crate::utils::get_pair;
 
 impl Board {
-    pub fn gen_moves(&mut self) -> Vec<Move> {
+    pub fn gen_moves(&self) -> Vec<Move> {
         let mut moves = Vec::with_capacity(20);
         for piece in WP.usize()..=BK.usize() {
             for index in 0..self.piece_count[piece] {
