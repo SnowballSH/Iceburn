@@ -3,7 +3,7 @@ use std::mem::transmute;
 use Piece::*;
 
 use crate::moves::Move;
-use crate::utils::get_pair;
+use crate::utils::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Color {
@@ -65,20 +65,20 @@ impl PieceType {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Piece {
-    EP,
-    WP,
-    WN,
-    WB,
-    WR,
-    WQ,
-    WK,
-    BP,
-    BN,
-    BB,
-    BR,
-    BQ,
-    BK,
-    OB,
+    EP,  // 0
+    WP,  // 1
+    WN,  // 2
+    WB,  // 3
+    WR,  // 4
+    WQ,  // 5
+    WK,  // 6
+    BP,  // 7
+    BN,  // 8
+    BB,  // 9
+    BR,  // 10
+    BQ,  // 11
+    BK,  // 12
+    OB,  // 13
 }
 
 impl Piece {
@@ -132,7 +132,7 @@ impl Piece {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct Square(pub(crate) u8);
+pub struct Square(pub u8);
 
 impl Square {
     const OFF_BOARD_ENPASSANT: Square = Square(120);
@@ -141,6 +141,11 @@ impl Square {
     pub fn shift(&self, amount: i16) -> Self {
         Square((self.0 as i16 + amount) as u8)
     }
+    
+    #[inline]
+    pub fn usize(self) -> usize {
+        self.0 as usize
+    } 
 
     pub fn is_attacked(&self, color: Color, board: &Board) -> bool {
         for pt in ((PieceType::King as u8)..=(PieceType::Queen as u8)).rev() {
@@ -186,7 +191,18 @@ impl Square {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MoveHistory {
+    pub move_: Move,
+    pub captured: Piece,
+    pub turn: Color,
+    pub enpassant: Square,
+    pub castle: u8,
+    pub fifty: u8,
+}
+
 /// Board
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Board {
     /// https://www.chessprogramming.org/0x88
     pub board: [Piece; 128],
@@ -197,7 +213,7 @@ pub struct Board {
     /// https://www.chessprogramming.org/Piece-Lists
     pub piece_list: [Square; 13 * 10],
     pub piece_count: [usize; 14],
-    pub move_stack: Vec<Move>,
+    pub move_stack: Vec<MoveHistory>,
 
     pub pawn_ranks: (u8, u8),
     pub promote_ranks: (u8, u8),
@@ -271,11 +287,15 @@ impl Board {
     }
 
     pub fn to_string(&self) -> String {
+        self.to_string_padding(0)
+    }
+
+    pub fn to_string_padding(&self, padding: usize) -> String {
         let mut s: String = self
             .symbols()
             .into_iter()
             .map(|x| {
-                x.into_iter()
+                 " ".repeat(padding).to_string() + &x.into_iter()
                     .map(|y| y.to_string())
                     .collect::<Vec<String>>()
                     .join(" ")
@@ -289,6 +309,7 @@ impl Board {
         }));
         s
     }
+
 
     /// https://www.chessprogramming.org/Piece-Lists
     pub fn init_piece_list(&mut self) {
@@ -308,7 +329,7 @@ impl Board {
     }
 
     pub fn add_piece(&mut self, piece: Piece, square: Square) {
-        self.board[square.0 as usize] = piece;
+        self.board[square.usize()] = piece;
         self.piece_list[piece.usize() * 10 + self.piece_count[piece.usize()]] = square;
         self.piece_count[piece.usize()] += 1;
     }
@@ -328,8 +349,8 @@ impl Board {
     }
 
     pub fn move_piece(&mut self, piece: Piece, source: Square, target: Square) {
-        self.board[target.0 as usize] = piece;
-        self.board[source.0 as usize] = Piece::EP;
+        self.board[target.usize()] = self.board[source.usize()];
+        self.board[source.usize()] = Piece::EP;
 
         for index in 0..self.piece_count[piece.usize()] {
             if self.piece_list[piece.usize() * 10 + index] == source {
@@ -342,25 +363,39 @@ impl Board {
     pub fn make_move(&mut self, m: Move) -> bool {
         let source = m.source();
         let target = m.target();
-        let captured = self.board[target.0 as usize];
+        let captured = self.board[target.usize()];
         let promoted = m.promote();
 
-        let piece = self.board[source.0 as usize];
+        let piece = self.board[source.usize()];
 
         self.move_piece(piece, source, target);
+
+        self.move_stack.push(MoveHistory {
+            move_: m,
+            captured: Piece::EP,
+            turn: self.turn,
+            enpassant: self.enpassant,
+            castle: self.castle,
+            fifty: self.fifty_move
+        });
 
         self.fifty_move += 1;
 
         if m.is_capture() {
             if captured != EP {
+                self.move_stack.last_mut().unwrap().captured = captured;
                 self.remove_piece(captured, target);
             }
             self.fifty_move = 0;
-        } else if self.board[target.0 as usize].piece_type() == PieceType::Pawn {
+        } else if self.board[target.usize()].piece_type() == PieceType::Pawn {
             self.fifty_move = 0;
         }
 
-        // TODO enpassant
+        if self.enpassant != Square::OFF_BOARD_ENPASSANT {
+            // update hash key
+        }
+        // reset
+        self.enpassant = Square::OFF_BOARD_ENPASSANT;
 
         if m.is_double_pawn_push() {
             if self.turn == Color::White {
@@ -370,10 +405,10 @@ impl Board {
             }
         } else if m.is_enpassant() {
             if self.turn == Color::White {
-                self.board[target.0 as usize + 16] = EP;
+                self.board[target.usize() + 16] = EP;
                 self.remove_piece(BP, target.shift(16));
             } else {
-                self.board[target.0 as usize - 16] = EP;
+                self.board[target.usize() - 16] = EP;
                 self.remove_piece(WP, target.shift(-16));
             }
         } else if m.is_castling() {
@@ -399,7 +434,7 @@ impl Board {
             self.add_piece(promoted, target);
         }
 
-        if self.board[target.0 as usize].piece_type() == PieceType::King {
+        if self.board[target.usize()].piece_type() == PieceType::King {
             if self.turn == Color::White {
                 self.king_location.0 = target;
             } else {
@@ -407,22 +442,134 @@ impl Board {
             }
         }
 
-        self.castle &= self.castling_rights[source.0 as usize];
-        self.castle &= self.castling_rights[target.0 as usize];
+        self.castle &= self.castling_rights[source.usize()];
+        self.castle &= self.castling_rights[target.usize()];
 
         self.turn = self.turn.not();
 
-        /*
         if get_pair(self.king_location, self.turn.not()).is_attacked(self.turn, self) {
             self.take_back();
             return false;
         }
-         */
 
         true
     }
 
     pub fn take_back(&mut self) {
-        todo!("Implement it")
+        let history = self.move_stack.pop().expect("No move to undo");
+        let m = history.move_;
+        let source = m.source();
+        let target = m.target();
+
+        // move piece back
+        self.move_piece(self.board[target.usize()], target, source);
+
+        // restore captured piece
+        if m.is_capture() {
+            self.add_piece(history.captured, target);
+        }
+
+        if m.is_enpassant() {
+            if self.turn == Color::White {
+                self.add_piece(WP, target.shift(-16));
+            } else {
+                self.add_piece(BP, target.shift(16));
+            }
+        } else if m.is_castling() {
+            match target.0 {
+                // g1
+                0x76 => self.move_piece(WR, Square(0x75), Square(0x77)),
+                // c1
+                0x72 => self.move_piece(WR, Square(0x73), Square(0x70)),
+                // g8
+                0x06 => self.move_piece(BR, Square(0x05), Square(0x07)),
+                // c8
+                0x02 => self.move_piece(BR, Square(0x03), Square(0x00)),
+                _ => {}
+            }
+        } else {
+            let promote = m.promote();
+            if promote != EP {
+                if self.turn == Color::White {
+                    self.add_piece(BP, source);
+                } else {
+                    self.add_piece(WP, source);
+                }
+                self.remove_piece(promote, source);
+            }
+        }
+
+        if self.board[source.usize()].piece_type() == PieceType::King {
+            *get_pair_mut(&mut self.king_location, self.turn.not()) = source;
+        }
+
+        self.turn = history.turn;
+
+        self.enpassant = history.enpassant;
+        self.fifty_move = history.fifty;
+        self.castle = history.castle;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::board::*;
+
+    #[test]
+    fn simple() {
+        let mut board = Board::default();
+        let moves = board.gen_moves();
+        assert_eq!(moves.len(), 20);
+
+        let moves_list = ["g1f3", "d7d5", "g2g3", "c8h3", "f1h3", "d8d6", "e1g1"];
+        for mm in moves_list {
+            let m = Move::from_uci(&board, mm.as_bytes().to_vec()).unwrap();
+            board.make_move(m);
+        }
+
+        let mut board = Board::default();
+        let moves_list = [
+            "f2f4", "g7g5", "b2b4", "g5f4", "g2g3", "f4g3", "f1g2", "g3h2", "d2d3", "h2g1q", "h1g1",
+        ];
+        for mm in moves_list {
+            let m = Move::from_uci(&board, mm.as_bytes().to_vec()).unwrap();
+            board.make_move(m);
+        }
+
+        let mut board = Board::default();
+        let moves_list = [
+            "e2e4", "a7a6", "e4e5", "d7d5", "e5d6", "d8d6"
+        ];
+        for mm in moves_list {
+            let m = Move::from_uci(&board, mm.as_bytes().to_vec()).unwrap();
+            board.make_move(m);
+        }
+    }
+
+    #[test]
+    fn undo() {
+        let mut board = Board::default();
+        let moves_list = [
+            "a2a4", "b7b5", "a4b5", "c7c6", "b5c6", "c8b7", "c6b7", "d8c7", "b7a8r", "c7b7", "a8b8"
+        ];
+        let mut positions = vec![];
+        for mm in moves_list {
+            let m = Move::from_uci(&board, mm.as_bytes().to_vec()).unwrap();
+            positions.push(board.clone());
+            board.make_move(m);
+        }
+        for _i in 0..moves_list.len() {
+            dbg!(moves_list[moves_list.len() - _i - 1]);
+            println!("{}", board.to_string());
+            board.take_back();
+            println!("{}", board.to_string());
+            let o = positions.pop().unwrap();
+            assert_eq!(board.board, o.board);
+            assert_eq!(board.castle, o.castle);
+            assert_eq!(board.fifty_move, o.fifty_move);
+            assert_eq!(board.turn, o.turn);
+            assert_eq!(board.enpassant, o.enpassant);
+            assert_eq!(board.piece_count, o.piece_count);
+        }
     }
 }

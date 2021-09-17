@@ -98,8 +98,8 @@ impl Move {
 
     pub fn to_uci(&self) -> Vec<u8> {
         let mut v = vec![];
-        let f = SQUARE_CHART[self.source().0 as usize];
-        let t = SQUARE_CHART[self.target().0 as usize];
+        let f = SQUARE_CHART[self.source().usize()];
+        let t = SQUARE_CHART[self.target().usize()];
         v.extend_from_slice(&f);
         v.extend_from_slice(&t);
         let p = self.promote();
@@ -111,8 +111,8 @@ impl Move {
 
     pub fn to_human(&self) -> Vec<u8> {
         let mut v = vec![];
-        let f = SQUARE_CHART[self.source().0 as usize];
-        let t = SQUARE_CHART[self.target().0 as usize];
+        let f = SQUARE_CHART[self.source().usize()];
+        let t = SQUARE_CHART[self.target().usize()];
         v.extend_from_slice(&f);
         if self.is_enpassant() {
             v.extend_from_slice(" enpassant".as_bytes())

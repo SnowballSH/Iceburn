@@ -112,6 +112,18 @@ impl Board {
                                         ))
                                     }
                                 }
+
+                                if to == self.enpassant.0 {
+                                    moves.push(Move::construct(
+                                        from_sq,
+                                        Square(to),
+                                        Piece::EP,
+                                        true,
+                                        false,
+                                        true,
+                                        false,
+                                    ))
+                                }
                             }
                         } // pawn end
 
@@ -121,8 +133,8 @@ impl Board {
 
                                 // king side
                                 if self.castle & get_pair(self.castling_bits, self.turn)[0] != 0 {
-                                    if self.board[king.0 as usize + 1] == EP
-                                        && self.board[king.0 as usize + 2] == EP
+                                    if self.board[king.usize() + 1] == EP
+                                        && self.board[king.usize() + 2] == EP
                                     {
                                         // doesn't matter if king will be in check for now
                                         if !king.is_attacked(self.turn.not(), self)
@@ -143,9 +155,9 @@ impl Board {
 
                                 // queen side
                                 if self.castle & get_pair(self.castling_bits, self.turn)[1] != 0 {
-                                    if self.board[king.0 as usize - 1] == EP
-                                        && self.board[king.0 as usize - 2] == EP
-                                        && self.board[king.0 as usize - 3] == EP
+                                    if self.board[king.usize() - 1] == EP
+                                        && self.board[king.usize() - 2] == EP
+                                        && self.board[king.usize() - 3] == EP
                                     {
                                         // doesn't matter if king will be in check for now
                                         if !king.is_attacked(self.turn.not(), self)
@@ -221,6 +233,6 @@ impl Board {
     }
 
     pub fn gen_legal_moves(&self) -> Vec<Move> {
-        todo!()
+        unimplemented!()
     }
 }
