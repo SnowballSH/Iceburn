@@ -1,37 +1,35 @@
 use crate::board::Board;
-use std::time::Instant;
 use crate::utils::u8_v_to_s;
+use std::time::Instant;
 
 #[derive(Clone, Debug)]
 pub struct Perft {
     pub nodes: usize,
-    pub board: Board,
 }
 
 impl Perft {
     pub fn new() -> Self {
-        Perft {
-            nodes: 0,
-            board: Board::default()
-        }
+        Perft { nodes: 0 }
     }
 
-    pub fn driver(&mut self, depth: usize) {
-        if depth == 0 {
-            self.nodes += 1;
-            return;
-        }
+    pub fn clone_driver(&mut self, depth: usize, board: Board) {
+        let leaf = depth == 2;
 
-        let moves = self.board.gen_moves();
+        let moves = board.gen_moves();
 
         for m in moves {
-            let res = self.board.make_move(m);
-            if !res {
+            let mut nb = board.clone();
+            nb.make_move(m);
+
+            if nb.is_checked(board.turn) {
                 continue;
             }
 
-            self.driver(depth - 1);
-            self.board.take_back();
+            if leaf {
+                self.nodes += nb.gen_legal_moves().len();
+            } else {
+                self.clone_driver(depth - 1, nb);
+            };
         }
     }
 
@@ -40,25 +38,27 @@ impl Perft {
         println!("Perft");
         let start = Instant::now();
 
-        let moves = self.board.gen_moves();
+        let board = Board::default();
+
+        let moves = board.gen_moves();
 
         for m in moves {
-            let res = self.board.make_move(m);
-            if !res {
-                continue;
-            }
+            let mut nb = board.clone();
+            nb.make_move(m);
 
             let prev = self.nodes;
 
-            self.driver(depth - 1);
-            self.board.take_back();
+            self.clone_driver(depth - 1, nb);
 
             let taken = self.nodes - prev;
-            println!("move {} human {} nodes {}",
-                     u8_v_to_s(m.to_uci()),
-                     u8_v_to_s(m.to_human()), taken);
+            println!("move {} nodes {}", u8_v_to_s(m.to_uci()), taken);
         }
 
-        println!("\nFinished\nDepth {}\nNodes {}\nTime {:?}", depth, self.nodes, start.elapsed());
+        println!(
+            "\nFinished\nDepth {}\nNodes {}\nTime {:?}",
+            depth,
+            self.nodes,
+            start.elapsed()
+        );
     }
 }

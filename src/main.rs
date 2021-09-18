@@ -1,7 +1,5 @@
 use std::io;
 
-use crate::board::Board;
-use crate::moves::Move;
 use crate::perft::Perft;
 
 mod board;

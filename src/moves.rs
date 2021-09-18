@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::board::{Board, Piece, Square, PieceType};
+use crate::board::{Board, Piece, PieceType, Square};
 use crate::utils::SQUARE_CHART;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

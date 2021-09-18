@@ -25,7 +25,7 @@ impl Board {
                                 let to = to as u8;
 
                                 // leftmost square is a promotion square
-                                if to & 0xf0 == get_pair(self.promote_ranks, self.turn) {
+                                if to & 0xf0 == Self::PROMOTE_RANKS[self.turn as usize] {
                                     for p in
                                         ((PieceType::Knight as u8)..=(PieceType::Queen as u8)).rev()
                                     {
@@ -56,7 +56,7 @@ impl Board {
                                     // double & 0x88 == 0 is not needed since pawns move vertically
                                     // also no need to check if the first square is blocked
                                     // if pawn hasn't moved and the target square is empty,
-                                    if from_sq.0 & 0xf0 == get_pair(self.pawn_ranks, self.turn)
+                                    if from_sq.0 & 0xf0 == Self::PAWN_RANKS[self.turn as usize]
                                         && self.board[double as usize] == EP
                                     {
                                         moves.push(Move::construct(
@@ -85,7 +85,7 @@ impl Board {
                                 // if target is opponent's piece and is not empty
                                 if captured_piece.color() == Some(self.turn.not()) {
                                     // if it is a promotion
-                                    if to & 0xf0 == get_pair(self.promote_ranks, self.turn) {
+                                    if to & 0xf0 == Self::PROMOTE_RANKS[self.turn as usize] {
                                         for p in ((PieceType::Knight as u8)
                                             ..=(PieceType::Queen as u8))
                                             .rev()
@@ -129,16 +129,16 @@ impl Board {
 
                         _ => {
                             if pt == PieceType::King {
-                                let king = get_pair(self.king_location, self.turn);
+                                let king = self.king_location[self.turn as usize];
 
                                 // king side
-                                if self.castle & get_pair(self.castling_bits, self.turn)[0] != 0 {
+                                if self.castle & Self::CASTLING_BITS[self.turn as usize][0] != 0 {
                                     if self.board[king.usize() + 1] == EP
                                         && self.board[king.usize() + 2] == EP
                                     {
                                         // doesn't matter if king will be in check for now
-                                        if !king.is_attacked(self.turn.not(), self)
-                                            && !king.shift(1).is_attacked(self.turn.not(), self)
+                                        if !king.is_attacked_by(self.turn.not(), self)
+                                            && !king.shift(1).is_attacked_by(self.turn.not(), self)
                                         {
                                             moves.push(Move::construct(
                                                 king,
@@ -154,14 +154,14 @@ impl Board {
                                 }
 
                                 // queen side
-                                if self.castle & get_pair(self.castling_bits, self.turn)[1] != 0 {
+                                if self.castle & Self::CASTLING_BITS[self.turn as usize][1] != 0 {
                                     if self.board[king.usize() - 1] == EP
                                         && self.board[king.usize() - 2] == EP
                                         && self.board[king.usize() - 3] == EP
                                     {
                                         // doesn't matter if king will be in check for now
-                                        if !king.is_attacked(self.turn.not(), self)
-                                            && !king.shift(-1).is_attacked(self.turn.not(), self)
+                                        if !king.is_attacked_by(self.turn.not(), self)
+                                            && !king.shift(-1).is_attacked_by(self.turn.not(), self)
                                         {
                                             moves.push(Move::construct(
                                                 king,
@@ -233,6 +233,23 @@ impl Board {
     }
 
     pub fn gen_legal_moves(&self) -> Vec<Move> {
-        unimplemented!()
+        let pms = self.gen_moves();
+        let mut lms = Vec::with_capacity(pms.len());
+        for m in pms {
+            if self.is_move_legal(m) {
+                lms.push(m);
+            }
+        }
+        lms
+    }
+
+    pub fn is_move_legal(&self, m: Move) -> bool {
+        let mut nb = self.clone();
+        nb.make_move(m);
+        if nb.is_checked(self.turn) {
+            false
+        } else {
+            true
+        }
     }
 }
