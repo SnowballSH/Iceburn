@@ -1,9 +1,6 @@
-use std::mem::transmute;
-
 use crate::board::Piece::{BK, EP, WP};
 use crate::board::{Board, Piece, PieceType, Square};
 use crate::moves::Move;
-use crate::utils::get_pair;
 
 impl Board {
     pub fn gen_moves(&self) -> Vec<Move> {
@@ -11,9 +8,8 @@ impl Board {
         for piece in WP.usize()..=BK.usize() {
             for index in 0..self.piece_count[piece] {
                 let from_sq = self.piece_list[piece * 10 + index];
-                let piece_struct: Piece = unsafe { transmute(piece as u8) };
-                if piece_struct.color() == Some(self.turn) {
-                    let pt = piece_struct.piece_type();
+                if Piece::PIECE_TO_COLOR[piece] == Some(self.turn) {
+                    let pt = Piece::PIECE_TO_PT[piece];
                     match pt {
                         PieceType::Pawn => {
                             let dir = 16 * (2 * self.turn as i16 - 1);
@@ -232,23 +228,24 @@ impl Board {
         moves
     }
 
-    pub fn gen_legal_moves(&self) -> Vec<Move> {
+    pub fn gen_legal_moves(&mut self) -> Vec<Move> {
         let pms = self.gen_moves();
         let mut lms = Vec::with_capacity(pms.len());
         for m in pms {
-            if self.is_move_legal(m) {
+            if self.pseudomove_is_legal(m) {
                 lms.push(m);
             }
         }
         lms
     }
 
-    pub fn is_move_legal(&self, m: Move) -> bool {
-        let mut nb = self.clone();
-        nb.make_move(m);
-        if nb.is_checked(self.turn) {
+    pub fn pseudomove_is_legal(&mut self, m: Move) -> bool {
+        self.make_move(m);
+        if self.is_checked(self.turn) {
+            self.undo_move();
             false
         } else {
+            self.undo_move();
             true
         }
     }

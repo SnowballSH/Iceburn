@@ -3,7 +3,6 @@ use std::mem::transmute;
 use Piece::*;
 
 use crate::moves::Move;
-use crate::utils::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Color {
@@ -82,33 +81,56 @@ impl Piece {
         EP, WK, WP, WN, WB, WR, WQ, EP, EP, BK, BP, BN, BB, BR, BQ, EP,
     ];
 
-    #[inline]
+    pub const PIECE_TO_PT: [PieceType; 14] = [
+        PieceType::None,
+        PieceType::Pawn,
+        PieceType::Knight,
+        PieceType::Bishop,
+        PieceType::Rook,
+        PieceType::Queen,
+        PieceType::King,
+        PieceType::Pawn,
+        PieceType::Knight,
+        PieceType::Bishop,
+        PieceType::Rook,
+        PieceType::Queen,
+        PieceType::King,
+        PieceType::None,
+    ];
+
+    pub const PIECE_TO_COLOR: [Option<Color>; 14] = [
+        None,
+        Some(Color::White),
+        Some(Color::White),
+        Some(Color::White),
+        Some(Color::White),
+        Some(Color::White),
+        Some(Color::White),
+        Some(Color::Black),
+        Some(Color::Black),
+        Some(Color::Black),
+        Some(Color::Black),
+        Some(Color::Black),
+        Some(Color::Black),
+        None,
+    ];
+
+    #[inline(always)]
     pub fn u8(self) -> u8 {
         self as u8
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn usize(self) -> usize {
         self as usize
     }
 
     pub fn piece_type(self) -> PieceType {
-        match self {
-            BP | WP => PieceType::Pawn,
-            BB | WB => PieceType::Bishop,
-            BN | WN => PieceType::Knight,
-            BR | WR => PieceType::Rook,
-            BQ | WQ => PieceType::Queen,
-            BK | WK => PieceType::King,
-            EP | OB => PieceType::None,
-        }
+        Self::PIECE_TO_PT[self.usize()]
     }
 
     pub fn color(self) -> Option<Color> {
-        match self {
-            EP | OB => None,
-            _ => Some(unsafe { transmute(self.usize() > 6) }),
-        }
+        Self::PIECE_TO_COLOR[self.usize()]
     }
 
     #[inline]
@@ -130,14 +152,14 @@ impl Piece {
 pub struct Square(pub u8);
 
 impl Square {
-    const OFF_BOARD_ENPASSANT: Square = Square(120);
+    pub const OFF_BOARD_ENPASSANT: Square = Square(120);
 
     #[inline]
     pub fn shift(&self, amount: i16) -> Self {
         Square((self.0 as i16 + amount) as u8)
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn usize(self) -> usize {
         self.0 as usize
     }
@@ -186,6 +208,16 @@ impl Square {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct MoveHistory {
+    pub move_: Move,
+    pub captured: Piece,
+    pub turn: Color,
+    pub enpassant: Square,
+    pub castle: u8,
+    pub fifty: u8,
+}
+
 /// Board
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Board {
@@ -198,6 +230,8 @@ pub struct Board {
     /// https://www.chessprogramming.org/Piece-Lists
     pub piece_list: [Square; 13 * 10],
     pub piece_count: [usize; 14],
+
+    pub move_stack: Vec<MoveHistory>,
 
     pub king_location: [Square; 2],
 }
@@ -212,6 +246,7 @@ impl Default for Board {
             fifty_move: 0,
             piece_list: [Square(0); 13 * 10],
             piece_count: [0; 14],
+            move_stack: Vec::new(),
 
             king_location: [Square(0x74), Square(0x04)],
         };
@@ -368,12 +403,22 @@ impl Board {
 
         let piece = self.board[source.usize()];
 
+        self.move_stack.push(MoveHistory {
+            move_: m,
+            captured: Piece::EP,
+            turn: self.turn,
+            enpassant: self.enpassant,
+            castle: self.castle,
+            fifty: self.fifty_move,
+        });
+
         self.move_piece(piece, source, target);
 
         self.fifty_move += 1;
 
         if m.is_capture() {
             if captured != EP {
+                self.move_stack.last_mut().unwrap().captured = captured;
                 self.remove_piece(captured, target);
             }
             self.fifty_move = 0;
@@ -381,9 +426,6 @@ impl Board {
             self.fifty_move = 0;
         }
 
-        if self.enpassant != Square::OFF_BOARD_ENPASSANT {
-            // update hash key
-        }
         // reset
         self.enpassant = Square::OFF_BOARD_ENPASSANT;
 
@@ -435,7 +477,6 @@ impl Board {
     }
 
     /// undo the last move
-    #[cfg(undo)]
     pub fn undo_move(&mut self) {
         let history = self.move_stack.pop().expect("No move to undo");
         let m = history.move_;
@@ -481,11 +522,35 @@ impl Board {
         }
 
         if self.board[source.usize()].piece_type() == PieceType::King {
-            *get_pair_mut(&mut self.king_location, self.turn.not()) = source;
+            self.king_location[self.turn.not() as usize] = source;
         }
 
         self.turn = history.turn;
 
+        self.enpassant = history.enpassant;
+        self.fifty_move = history.fifty;
+        self.castle = history.castle;
+    }
+
+    pub fn make_null_move(&mut self) {
+        self.move_stack.push(MoveHistory {
+            move_: Move(0),
+            captured: Piece::EP,
+            turn: self.turn,
+            enpassant: self.enpassant,
+            castle: self.castle,
+            fifty: self.fifty_move,
+        });
+
+        self.enpassant = Square::OFF_BOARD_ENPASSANT;
+
+        self.fifty_move = 0;
+        self.turn = self.turn.not();
+    }
+
+    pub fn undo_null_move(&mut self) {
+        let history = self.move_stack.pop().expect("No move to undo");
+        self.turn = history.turn;
         self.enpassant = history.enpassant;
         self.fifty_move = history.fifty;
         self.castle = history.castle;
@@ -525,12 +590,11 @@ mod tests {
         }
     }
 
-    /*
     #[test]
     fn undo() {
         let mut board = Board::default();
         let moves_list = [
-            "a2a4", "b7b5", "a4b5", "c7c6", "b5c6", "c8b7", "c6b7", "d8c7", "b7a8r", "c7b7", "a8b8"
+            "a2a4", "b7b5", "a4b5", "c7c6", "b5c6", "c8b7", "c6b7", "d8c7", "b7a8r", "c7b7", "a8b8",
         ];
         let mut positions = vec![];
         for mm in moves_list {
@@ -553,9 +617,7 @@ mod tests {
         }
 
         let mut board = Board::default();
-        let moves_list = [
-            "a2a4", "d7d6", "a4a5", "b7b5", "a5b6", "c7b6",
-        ];
+        let moves_list = ["a2a4", "d7d6", "a4a5", "b7b5", "a5b6", "c7b6"];
         let mut positions = vec![];
         for mm in moves_list {
             let m = Move::from_uci(&board, mm.as_bytes().to_vec()).unwrap();
@@ -576,5 +638,4 @@ mod tests {
             assert_eq!(board.piece_count[1..], o.piece_count[1..]);
         }
     }
-     */
 }

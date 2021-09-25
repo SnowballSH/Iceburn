@@ -1,13 +1,15 @@
+use crate::board::Board;
+use crate::utils::u8_v_to_s;
 use std::io;
 
-use crate::perft::Perft;
-
-mod board;
-mod movegen;
-mod moves;
-mod nnue;
-mod perft;
-mod utils;
+pub mod board;
+pub mod fen;
+pub mod movegen;
+pub mod moves;
+pub mod nnue;
+pub mod perft;
+pub mod utils;
+pub mod zobrist;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -17,8 +19,21 @@ fn read_line() -> String {
 }
 
 fn uci() {
-    let mut perf = Perft::new();
-    perf.test(5);
+    let mut board = Board::default();
+
+    let moves = board.gen_moves();
+
+    for m in moves {
+        board.make_move(m);
+
+        println!(
+            "MOVE {} = {}",
+            u8_v_to_s(m.to_human()),
+            nnue::nnue_eval_fen(&*board.fen())
+        );
+
+        board.undo_move();
+    }
 }
 
 fn main() {
