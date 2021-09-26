@@ -27,7 +27,7 @@ lazy_static! {
 
 impl Board {
     pub fn gen_hash(&self) -> u32 {
-        let mut res = 0u32;
+        let mut res = 0;
 
         for sq in 0..128 {
             if sq & 0x88 == 0 {
