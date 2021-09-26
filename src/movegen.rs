@@ -228,6 +228,118 @@ impl Board {
         moves
     }
 
+    pub fn gen_captures(&mut self) -> Vec<Move> {
+        let mut moves = Vec::with_capacity(20);
+        for piece in WP.usize()..=BK.usize() {
+            for index in 0..self.piece_count[piece] {
+                let from_sq = self.piece_list[piece * 10 + index];
+                if Piece::PIECE_TO_COLOR[piece] == Some(self.turn) {
+                    let pt = Piece::PIECE_TO_PT[piece];
+                    match pt {
+                        PieceType::Pawn => {
+                            let dir = 16 * (2 * self.turn as i16 - 1);
+
+                            // capture
+                            for hdir in [1_i16, -1] {
+                                let to = from_sq.0 as i16 + hdir + dir as i16;
+                                if to & 0x88 != 0 {
+                                    continue;
+                                }
+
+                                let to = to as u8;
+
+                                let captured_piece = self.board[to as usize];
+                                // if target is opponent's piece and is not empty
+                                if captured_piece.color() == Some(self.turn.not()) {
+                                    // if it is a promotion
+                                    if to & 0xf0 == Self::PROMOTE_RANKS[self.turn as usize] {
+                                        for p in ((PieceType::Knight as u8)
+                                            ..=(PieceType::Queen as u8))
+                                            .rev()
+                                        {
+                                            moves.push(Move::construct(
+                                                from_sq,
+                                                Square(to),
+                                                Piece::from_pt_u8(p, self.turn),
+                                                true,
+                                                false,
+                                                false,
+                                                false,
+                                            ));
+                                        }
+                                    } else {
+                                        moves.push(Move::construct(
+                                            from_sq,
+                                            Square(to),
+                                            Piece::EP,
+                                            true,
+                                            false,
+                                            false,
+                                            false,
+                                        ))
+                                    }
+                                }
+
+                                if to == self.enpassant.0 {
+                                    moves.push(Move::construct(
+                                        from_sq,
+                                        Square(to),
+                                        Piece::EP,
+                                        true,
+                                        false,
+                                        true,
+                                        false,
+                                    ))
+                                }
+                            }
+                        } // pawn end
+
+                        _ => {
+                            // bishop, rook, queen
+                            let slider = pt as u8 >= 4;
+                            let dirs = pt.offset();
+
+                            for d in dirs {
+                                let mut to = from_sq.0 as i16;
+
+                                'l: loop {
+                                    to += d as i16;
+                                    if to & 0x88 != 0 {
+                                        break 'l;
+                                    }
+
+                                    // capture
+                                    if self.board[to as usize].color() == Some(self.turn.not()) {
+                                        moves.push(Move::construct(
+                                            from_sq,
+                                            Square(to as u8),
+                                            Piece::EP,
+                                            true,
+                                            false,
+                                            false,
+                                            false,
+                                        ));
+
+                                        break 'l;
+                                    }
+                                    // self-block
+                                    else if self.board[to as usize].color() == Some(self.turn) {
+                                        break 'l;
+                                    }
+
+                                    if !slider {
+                                        break 'l;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        moves
+    }
+
     pub fn gen_legal_moves(&mut self) -> Vec<Move> {
         let pms = self.gen_moves();
         let mut lms = Vec::with_capacity(pms.len());

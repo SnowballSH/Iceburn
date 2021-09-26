@@ -20,6 +20,7 @@ pub mod search;
 pub mod tt;
 pub mod utils;
 pub mod zobrist;
+pub mod weight;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -91,10 +92,9 @@ fn uci() {
                         amount: Duration::from_millis(tms - 50),
                     });
                 } else {
-                    max_depth = 6;
                     searcher.lock().unwrap().timeman = Some(TimeMan {
                         start: Instant::now(),
-                        amount: Duration::from_millis(4000),
+                        amount: Duration::from_millis(10000),
                     });
                 }
 

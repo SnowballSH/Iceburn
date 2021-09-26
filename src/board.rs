@@ -3,6 +3,7 @@ use std::mem::transmute;
 use Piece::*;
 
 use crate::moves::Move;
+use crate::nnue::nnue_eval_fen;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Color {
@@ -283,6 +284,10 @@ impl Board {
         WP, WP, WP, WP, WP, WP, WP, WP,  OB, OB, OB, OB, OB, OB, OB, OB,
         WR, WN, WB, WQ, WK, WB, WN, WR,  OB, OB, OB, OB, OB, OB, OB, OB,
     ];
+
+    pub fn eval(&self) -> i32 {
+        nnue_eval_fen(&*self.fen()) * if self.turn == Color::White { 1 } else { -1 }
+    }
 
     pub fn symbols(&self) -> Vec<Vec<char>> {
         let mut v = vec![vec![]];

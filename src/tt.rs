@@ -86,6 +86,10 @@ impl TranspositionTable {
 
     /// inserts an element to TT
     pub fn insert(&mut self, hash: u32, mut entry: TTEntry, ply: usize) {
+        if self.table.len() >= TT_MAX_SIZE {
+            self.table.clear();
+        }
+
         if entry.score < -search_constants::MATE_SCORE {
             entry.score -= ply as i32;
         } else if entry.score > search_constants::MATE_SCORE {
