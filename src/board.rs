@@ -425,6 +425,10 @@ impl Board {
             if captured != EP {
                 self.move_stack.last_mut().unwrap().captured = captured;
                 self.remove_piece(captured, target);
+                if captured.piece_type() == PieceType::King {
+                    self.king_location[captured.color().unwrap() as usize] =
+                        Square::OFF_BOARD_ENPASSANT;
+                }
             }
             self.fifty_move = 0;
         } else if self.board[target.usize()].piece_type() == PieceType::Pawn {
@@ -494,6 +498,9 @@ impl Board {
         // restore captured piece
         if m.is_capture() {
             self.add_piece(history.captured, target);
+            if history.captured.piece_type() == PieceType::King {
+                self.king_location[history.captured.color().unwrap() as usize] = target;
+            }
         }
 
         if m.is_enpassant() {

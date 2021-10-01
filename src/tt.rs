@@ -1,100 +1,95 @@
-use std::collections::HashMap;
-use std::intrinsics::size_of;
-
 use crate::moves::Move;
-use crate::search::search_constants;
+use crate::search::Depth;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialOrd, PartialEq)]
 pub enum TTFlag {
-    Exact,
-    Alpha,
-    Beta,
+    INVALID = 0,
+    Exact = 1,
+    Upper = 2,
+    Lower = 4,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct TTEntry {
-    pub depth: i32,
-    pub flag: TTFlag,
+    pub key: u16,
     pub score: i32,
-    pub move_: Move,
+    pub bestmove: Option<Move>,
+    pub depth: Depth,
+    pub flag: TTFlag,
 }
 
-macro_rules! entry_size {
-    ($t: ty) => {
-        size_of::<$t>()
-    };
+impl TTEntry {
+    pub fn construct(
+        hash: u64,
+        score: i32,
+        bestmove: Option<Move>,
+        depth: Depth,
+        flags: TTFlag,
+    ) -> Self {
+        TTEntry {
+            key: (hash >> 48) as u16,
+            score,
+            bestmove,
+            depth,
+            flag: flags
+        }
+    }
+
+    pub fn is_key_valid(&self, hash: u64) -> bool {
+        self.key == (hash >> 48) as u16
+    }
 }
 
-pub const TT_MAX_SIZE: usize = 16_000_000 / entry_size!(TTEntry); // 16 MB
+impl Default for TTEntry {
+    fn default() -> Self {
+        TTEntry {
+            key: 0,
+            score: 0,
+            bestmove: None,
+            depth: 0,
+            flag: TTFlag::INVALID,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct TranspositionTable {
-    pub table: HashMap<u32, TTEntry>,
+    pub table: Vec<TTEntry>,
+    pub size: usize,
 }
 
 impl Default for TranspositionTable {
     fn default() -> Self {
-        TranspositionTable {
-            table: HashMap::with_capacity(TT_MAX_SIZE),
-        }
+        Self::with_size(16)
     }
 }
 
 impl TranspositionTable {
-    /// search for a table value
-    pub fn get(
-        &self,
-        alpha: i32,
-        beta: i32,
-        move_: &mut Move,
-        depth: i32,
-        hash: &u32,
-        ply: usize,
-    ) -> Option<i32> {
-        if let Some(entry) = self.table.get(hash) {
-            if entry.depth >= depth {
-                let mut score = entry.score;
-
-                if score < -search_constants::MATE_SCORE {
-                    score += ply as i32;
-                } else if score > search_constants::MATE_SCORE {
-                    score -= ply as i32;
-                }
-
-                match entry.flag {
-                    TTFlag::Exact => return Some(score),
-                    TTFlag::Alpha => {
-                        if score <= alpha {
-                            return Some(alpha);
-                        }
-                    }
-                    TTFlag::Beta => {
-                        if score >= beta {
-                            return Some(beta);
-                        }
-                    }
-                }
-            }
-
-            *move_ = entry.move_;
-
-            None
-        } else {
-            None
+    pub fn with_size(size_mb: u64) -> Self {
+        let count = size_mb * 1024 * 1024 / std::mem::size_of::<TTEntry>() as u64;
+        let new_ttentry_count = count.next_power_of_two() / 2;
+        TranspositionTable {
+            table: vec![TTEntry::default(); new_ttentry_count as usize],
+            size: new_ttentry_count as usize,
         }
     }
 
-    /// inserts an element to TT
-    pub fn insert(&mut self, hash: u32, mut entry: TTEntry, ply: usize) {
-        if self.table.len() >= TT_MAX_SIZE {
-            self.table.clear();
+    pub fn get(&self, hash: u64) -> Option<&TTEntry> {
+        unsafe{
+            let res = self.table.get_unchecked(hash as usize % self.size);
+            if res.is_key_valid(hash) {
+                Some(res)
+            } else {
+                None
+            }
         }
+    }
 
-        if entry.score < -search_constants::MATE_SCORE {
-            entry.score -= ply as i32;
-        } else if entry.score > search_constants::MATE_SCORE {
-            entry.score += ply as i32;
-        }
-        self.table.insert(hash, entry);
+    pub fn insert(&mut self, hash: u64, entry: TTEntry) {
+        self.table[hash as usize % self.size] = entry;
+    }
+
+    pub fn clear(&mut self) {
+        self.table = vec![TTEntry::default(); self.size];
     }
 }

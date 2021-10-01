@@ -1,10 +1,11 @@
 use lazy_static::lazy_static;
 
 use crate::board::Color;
+use std::sync::{Mutex, MutexGuard};
 
-static mut SEED: u32 = 1493682623;
+static mut SEED: u64 = 1493682623;
 
-pub fn pseudo_random() -> u32 {
+pub fn pseudo_random() -> u64 {
     let mut n = unsafe { SEED };
     n ^= n << 13;
     n ^= n >> 17;
@@ -46,6 +47,11 @@ fn gen_sqchart() -> [[u8; 2]; 128] {
 #[inline]
 pub fn u8_v_to_s(k: Vec<u8>) -> String {
     String::from_utf8(k).unwrap()
+}
+
+#[inline]
+pub fn extract_mutex<T>(m: &Mutex<T>) -> MutexGuard<T> {
+    m.lock().unwrap()
 }
 
 lazy_static! {

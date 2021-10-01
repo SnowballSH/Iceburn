@@ -1,14 +1,16 @@
 #![feature(core_intrinsics)]
 
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use std::{io, thread};
+use std::process::exit;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc};
+use std::{io};
 
 use crate::board::Board;
 use crate::moves::Move;
-use crate::search::{Searcher, TimeMan};
+use crate::search::Search;
+use crate::timeman::{TimeControl, Timer};
 use crate::tt::TranspositionTable;
-use std::process::exit;
+use crate::utils::u8_v_to_s;
 
 pub mod board;
 pub mod fen;
@@ -17,10 +19,11 @@ pub mod moves;
 pub mod nnue;
 pub mod perft;
 pub mod search;
+pub mod timeman;
 pub mod tt;
 pub mod utils;
-pub mod zobrist;
 pub mod weight;
+pub mod zobrist;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -29,9 +32,9 @@ fn read_line() -> String {
 }
 
 fn uci() {
-    let searcher = Arc::new(Mutex::new(Searcher::default()));
     let mut board = Board::default();
-    let mut tt = Arc::new(Mutex::new(TranspositionTable::default()));
+    let mut tt = TranspositionTable::default();
+    let stop_search = Arc::new(AtomicBool::new(false));
 
     loop {
         let line = read_line();
@@ -48,14 +51,11 @@ fn uci() {
             "quit" => {
                 exit(0);
             }
-            "stop" => {
-                *searcher.lock().unwrap().stop_search.lock().unwrap() = true;
-            }
+            "stop" => {}
             "isready" => println!("readyok"),
             "ucinewgame" => {
-                searcher.lock().unwrap().clear();
                 board = Board::default();
-                tt = Arc::new(Mutex::new(TranspositionTable::default()));
+                tt = TranspositionTable::default();
             }
             "uci" => {
                 println!("id name Iceburn");
@@ -79,31 +79,17 @@ fn uci() {
                 }
             }
             "go" => {
-                let mut max_depth = 100;
-
-                if args == "" {
-                    searcher.lock().unwrap().timeman = None;
-                } else if args.starts_with("movetime") {
-                    let tms: u64 = args.split_whitespace().collect::<Vec<&str>>()[1]
-                        .parse()
-                        .unwrap();
-                    searcher.lock().unwrap().timeman = Some(TimeMan {
-                        start: Instant::now(),
-                        amount: Duration::from_millis(tms - 50),
-                    });
-                } else {
-                    searcher.lock().unwrap().timeman = Some(TimeMan {
-                        start: Instant::now(),
-                        amount: Duration::from_millis(10000),
-                    });
-                }
-
-                let mut bdc = board.clone();
-                let ttc = tt.clone();
-                let ssc = searcher.clone();
-                thread::spawn(move || {
-                    ssc.lock().unwrap().search(&mut bdc, ttc, max_depth);
-                });
+                let mut searcher = Search::new(
+                    Timer::new(&board, TimeControl::FixedMillis(10000), stop_search.clone()),
+                    &mut tt,
+                );
+                let best_move;
+                let best_score;
+                let res = searcher.go(&mut board);
+                best_move = res.0;
+                best_score = res.1;
+                println!("info score cp {}", best_score);
+                println!("bestmove {}", u8_v_to_s(best_move.to_uci()));
             }
             _ => {
                 println!("No such command")
