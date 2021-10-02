@@ -1,5 +1,5 @@
-use crate::moves::Move;
 use crate::search::Depth;
+use shakmaty::Move;
 
 #[derive(Copy, Clone, Debug, Eq, PartialOrd, PartialEq)]
 pub enum TTFlag {
@@ -9,7 +9,7 @@ pub enum TTFlag {
     Lower = 4,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TTEntry {
     pub key: u16,
     pub score: i32,
@@ -31,7 +31,7 @@ impl TTEntry {
             score,
             bestmove,
             depth,
-            flag: flags
+            flag: flags,
         }
     }
 
@@ -75,7 +75,7 @@ impl TranspositionTable {
     }
 
     pub fn get(&self, hash: u64) -> Option<&TTEntry> {
-        unsafe{
+        unsafe {
             let res = self.table.get_unchecked(hash as usize % self.size);
             if res.is_key_valid(hash) {
                 Some(res)

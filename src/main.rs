@@ -1,21 +1,17 @@
 #![feature(core_intrinsics)]
 
+use std::io;
 use std::process::exit;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc};
-use std::{io};
+use std::sync::Arc;
 
-use crate::board::Board;
-use crate::moves::Move;
 use crate::search::Search;
 use crate::timeman::{TimeControl, Timer};
 use crate::tt::TranspositionTable;
-use crate::utils::u8_v_to_s;
+use shakmaty::uci::Uci;
+use shakmaty::{uci, Chess, Position};
+use std::str::FromStr;
 
-pub mod board;
-pub mod fen;
-pub mod movegen;
-pub mod moves;
 pub mod nnue;
 pub mod perft;
 pub mod search;
@@ -23,7 +19,7 @@ pub mod timeman;
 pub mod tt;
 pub mod utils;
 pub mod weight;
-pub mod zobrist;
+pub mod ordering;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -32,7 +28,7 @@ fn read_line() -> String {
 }
 
 fn uci() {
-    let mut board = Board::default();
+    let mut board = Chess::default();
     let mut tt = TranspositionTable::default();
     let stop_search = Arc::new(AtomicBool::new(false));
 
@@ -54,7 +50,7 @@ fn uci() {
             "stop" => {}
             "isready" => println!("readyok"),
             "ucinewgame" => {
-                board = Board::default();
+                board = Chess::default();
                 tt = TranspositionTable::default();
             }
             "uci" => {
@@ -72,24 +68,29 @@ fn uci() {
                     vec![]
                 };
 
-                board = Board::default();
+                board = Chess::default();
 
                 for m in moves {
-                    board.make_move(Move::from_uci(&board, Vec::from(m)).unwrap());
+                    board.play_unchecked(&uci::Uci::from_str(m).unwrap().to_move(&board).unwrap());
                 }
             }
             "go" => {
+                if args == "perft" {
+                    let mut p = perft::Perft::new();
+                    p.test(5);
+                    continue;
+                }
+
                 let mut searcher = Search::new(
-                    Timer::new(&board, TimeControl::FixedMillis(10000), stop_search.clone()),
+                    Timer::new(&board, TimeControl::FixedMillis(5000), stop_search.clone()),
                     &mut tt,
                 );
-                let best_move;
-                let best_score;
-                let res = searcher.go(&mut board);
-                best_move = res.0;
-                best_score = res.1;
+                let res = searcher.mtdf(&mut board);
+                let best_move = res.0;
+                let best_score = res.1;
                 println!("info score cp {}", best_score);
-                println!("bestmove {}", u8_v_to_s(best_move.to_uci()));
+                println!("bestmove {}", Uci::from_standard(&best_move));
+                // tt.clear();
             }
             _ => {
                 println!("No such command")

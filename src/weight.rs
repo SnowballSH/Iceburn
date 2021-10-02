@@ -1,14 +1,13 @@
-use crate::board::{Board, Color};
+use shakmaty::{Chess, Color, Setup};
 
-pub const MATERIAL_OPENING: [i32; 7] = [0, 110, 280, 330, 550, 1080, 20000];
+pub const MATERIAL_OPENING: [i32; 6] = [110, 280, 330, 550, 1080, 20000];
 pub const INF_SCORE: i32 = i32::MAX - 10000;
 
 pub fn is_checkmate(value: i32) -> bool {
     2 * value.abs() >= INF_SCORE
 }
 
-pub const PSQ: [[i32; 64]; 7] = [
-    [0; 64],
+pub const PSQ: [[i32; 64]; 6] = [
     [
         0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5,
         5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10,
@@ -42,33 +41,15 @@ pub const PSQ: [[i32; 64]; 7] = [
     ],
 ];
 
-impl Board {
-    pub fn fast_fast_eval(&self) -> i32 {
-        let mut score = 0;
-        for i in 0..128 {
-            if i & 0x88 == 0 {
-                let p = self.board[i];
-                let pt = p.piece_type();
-                let mut pos = (i & 0x7) + 56 - ((i >> 4) << 3);
-                if p.color() == Some(Color::Black) {
-                    pos ^= 56;
-                }
-                if 1 <= pt as usize && pt as usize <= 6 {
-                    score += MATERIAL_OPENING[pt as usize]
-                        * if p.color() == Some(self.turn) {
-                            1
-                        } else {
-                            -1
-                        };
-                    score += PSQ[pt as usize][pos]
-                        * if p.color() == Some(self.turn) {
-                            1
-                        } else {
-                            -1
-                        };
-                }
-            }
-        }
-        score
+pub fn fast_eval(board: &Chess) -> i32 {
+    let mut score = 0;
+    for (sq, p) in board.board().pieces() {
+        score += MATERIAL_OPENING[p.role as usize - 1] * (p.color as i32 * 2 - 1);
+        score += PSQ[p.role as usize - 1][if p.color == Color::White {
+            sq as usize
+        } else {
+            sq as usize ^ 56
+        }] * (p.color as i32 * 2 - 1)
     }
+    score * (board.turn() as i32 * 2 - 1)
 }

@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use crate::board::Board;
-use crate::utils::u8_v_to_s;
+use shakmaty::uci::Uci;
+use shakmaty::{Chess, Position};
 
 #[derive(Clone, Debug)]
 pub struct Perft {
@@ -13,44 +13,17 @@ impl Perft {
         Perft { nodes: 0 }
     }
 
-    pub fn undo_driver(&mut self, depth: usize, board: &mut Board) {
+    pub fn clone_driver(&mut self, depth: usize, board: Chess) {
         let leaf = depth == 2;
 
-        let moves = board.gen_moves();
-
-        for m in moves {
-            board.make_move(m);
-
-            if board.is_checked(board.turn.not()) {
-                board.undo_move();
-                continue;
-            }
-
-            if leaf {
-                self.nodes += board.gen_legal_moves().len();
-            } else {
-                self.undo_driver(depth - 1, board);
-            };
-
-            board.undo_move();
-        }
-    }
-
-    pub fn clone_driver(&mut self, depth: usize, board: Board) {
-        let leaf = depth == 2;
-
-        let moves = board.gen_moves();
+        let moves = board.legal_moves();
 
         for m in moves {
             let mut nb = board.clone();
-            nb.make_move(m);
-
-            if nb.is_checked(board.turn) {
-                continue;
-            }
+            nb.play_unchecked(&m);
 
             if leaf {
-                self.nodes += nb.gen_legal_moves().len();
+                self.nodes += nb.legal_moves().len();
             } else {
                 self.clone_driver(depth - 1, nb);
             };
@@ -62,32 +35,26 @@ impl Perft {
         println!("Perft");
         let start = Instant::now();
 
-        let mut board = Board::default();
+        let board = Chess::default();
 
         let leaf = depth == 2;
 
-        let moves = board.gen_moves();
+        let moves = board.legal_moves();
 
         for m in moves {
-            board.make_move(m);
-
-            if board.is_checked(board.turn.not()) {
-                board.undo_move();
-                continue;
-            }
+            let mut nb = board.clone();
+            nb.play_unchecked(&m);
 
             let prev = self.nodes;
 
             if leaf {
-                self.nodes += board.gen_moves().len();
+                self.nodes += board.legal_moves().len();
             } else {
-                self.undo_driver(depth - 1, &mut board);
+                self.clone_driver(depth - 1, nb);
             }
 
-            board.undo_move();
-
             let taken = self.nodes - prev;
-            println!("move {} nodes {}", u8_v_to_s(m.to_uci()), taken);
+            println!("move {} nodes {}", Uci::from_standard(&m), taken);
         }
 
         println!(

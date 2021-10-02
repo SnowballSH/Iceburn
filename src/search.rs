@@ -1,9 +1,13 @@
-use crate::board::Board;
-use crate::moves::Move;
+use crate::nnue::nnue_eval_fen;
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
-use crate::utils::u8_v_to_s;
-use crate::weight::{is_checkmate, INF_SCORE};
+use crate::weight::{fast_eval, is_checkmate, INF_SCORE};
+use shakmaty::uci::Uci;
+use shakmaty::{Chess, Move, Position, Setup};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::str::FromStr;
+use crate::ordering::MoveOrderer;
 
 pub type Depth = i8;
 pub type Ply = usize;
@@ -44,26 +48,27 @@ impl<'a> Search<'a> {
         }
     }
 
-    pub fn go(&mut self, board: &mut Board) -> (Move, i32) {
+    pub fn mtdf(&mut self, board: &Chess) -> (Move, i32) {
         let mut alpha = -INF_SCORE;
         let mut beta = INF_SCORE;
         let mut depth = 1;
-        let mut final_move = Move(0);
+        let mut final_move = None;
         let mut final_score = 0;
         let mut last_score = 0;
 
-        let moves = board.gen_moves();
+        let moves = board.legal_moves();
         if moves.len() == 1 {
-            return (moves[0], 0);
+            return (moves[0].clone(), 0);
         }
 
         while !self.stop && self.timer.start_check(depth) && !is_checkmate(final_score) {
             let res = self.negamax_root(board, depth, alpha, beta);
+
             if self.stop {
                 break;
             }
 
-            final_move = res.0;
+            let cur_move = res.0;
             final_score = res.1;
 
             if depth >= 4 {
@@ -76,48 +81,49 @@ impl<'a> Search<'a> {
             } else if final_score >= beta {
                 beta = INF_SCORE;
             } else {
-                self.print_info(board, depth, final_move, final_score);
+                if let Some(res) = self.print_info(board, depth, cur_move, final_score) {
+                    final_move = Some(res);
+                }
+
                 alpha = final_score - Self::ASPIRATION_WINDOW;
                 beta = final_score + Self::ASPIRATION_WINDOW;
                 depth += 1;
                 self.stats = Statistics::default();
             }
         }
-        (final_move, final_score)
+        (final_move.unwrap(), final_score)
     }
 
     pub fn negamax_root(
         &mut self,
-        board: &mut Board,
+        board: &Chess,
         mut depth: Depth,
         mut alpha: i32,
         beta: i32,
     ) -> (Move, i32) {
-        let moves = board.gen_moves();
+        let moves = board.legal_moves();
 
-        let in_check = board.is_checked(board.turn);
+        let in_check = board.is_check();
         if in_check {
             depth += 1;
         }
 
-        let first_move = moves[0];
+        let first_move = moves[0].clone();
 
         let mut best_move = first_move;
         if moves.len() == 1 {
             return (best_move, 0);
         }
 
-        let hs = board.gen_hash();
+        let mut hasher = DefaultHasher::new();
+        board.board().hash(&mut hasher);
+        let hs = hasher.finish();
 
         let mut value;
         for m in moves {
-            board.make_move(m);
-            if board.is_checked(board.turn.not()) {
-                board.undo_move();
-                continue;
-            }
-            value = -self.negamax(board, depth - 1, 1, -beta, -alpha, true);
-            board.undo_move();
+            let mut nb = board.clone();
+            nb.play_unchecked(&m);
+            value = -self.negamax(&mut nb, depth - 1, 1, -beta, -alpha, true);
 
             if self.stop || self.timer.stop_check() {
                 self.stop = true;
@@ -129,14 +135,14 @@ impl<'a> Search<'a> {
                 if value >= beta {
                     self.tt.insert(
                         hs,
-                        TTEntry::construct(hs, beta, Some(best_move), depth, TTFlag::Lower),
+                        TTEntry::construct(hs, beta, Some(best_move.clone()), depth, TTFlag::Lower),
                     );
-                    return (best_move, beta);
+                    return (best_move.clone(), beta);
                 }
                 alpha = value;
                 self.tt.insert(
                     hs,
-                    TTEntry::construct(hs, alpha, Some(best_move), depth, TTFlag::Upper),
+                    TTEntry::construct(hs, alpha, Some(best_move.clone()), depth, TTFlag::Upper),
                 );
             }
         }
@@ -144,15 +150,15 @@ impl<'a> Search<'a> {
         if !self.stop {
             self.tt.insert(
                 hs,
-                TTEntry::construct(hs, alpha, Some(best_move), depth, TTFlag::Exact),
+                TTEntry::construct(hs, alpha, Some(best_move.clone()), depth, TTFlag::Exact),
             );
         }
-        (best_move, alpha)
+        (best_move.clone(), alpha)
     }
 
     pub fn negamax(
         &mut self,
-        board: &mut Board,
+        board: &Chess,
         depth: Depth,
         ply: Ply,
         mut alpha: i32,
@@ -176,18 +182,22 @@ impl<'a> Search<'a> {
             return alpha;
         }
 
-        let in_check = board.is_checked(board.turn);
+        let in_check = board.is_check();
         if depth <= 0 && !in_check {
             return self.q_search(board, ply, alpha, beta);
         }
         self.stats.nodes += 1;
 
-        if board.fifty_move >= 100 {
+        if board.is_insufficient_material() {
             self.stats.leafs += 1;
             return 0;
         }
 
-        if let Some(tt_entry) = self.tt.get(board.gen_hash()) {
+        let mut hasher = DefaultHasher::new();
+        board.board().hash(&mut hasher);
+        let hs = hasher.finish();
+
+        if let Some(tt_entry) = self.tt.get(hs) {
             if tt_entry.depth >= depth {
                 self.stats.tt_hits += 1;
                 match tt_entry.flag {
@@ -213,9 +223,9 @@ impl<'a> Search<'a> {
 
         if Self::can_apply_null(board, depth, beta, in_check, can_apply_null) {
             let r = if depth > 6 { 3 } else { 2 };
-            board.make_null_move();
-            let value = -self.negamax(board, depth - r - 1, ply, -beta, -beta + 1, false);
-            board.undo_null_move();
+
+            let nb = board.clone().swap_turn().unwrap();
+            let value = -self.negamax(&nb, depth - r - 1, ply, -beta, -beta + 1, false);
             if self.stop {
                 return 0;
             }
@@ -229,10 +239,11 @@ impl<'a> Search<'a> {
         let mut reduced_depth: Depth;
         let mut best_move: Option<Move> = None;
         let mut tt_flag = TTFlag::Upper;
-        let moves = board.gen_moves();
+        let moves = board.legal_moves();
         let lmoves = moves.len();
+        let mut orderer = MoveOrderer::new(moves);
 
-        for m in moves {
+        while let Some(m) = orderer.next_move() {
             reduced_depth = depth;
             /*
             if Self::can_apply_lmr(&m, depth, idx) {
@@ -244,13 +255,9 @@ impl<'a> Search<'a> {
                 reduced_depth += 1;
             }
 
-            board.make_move(m);
-            if board.is_checked(board.turn.not()) {
-                board.undo_move();
-                continue;
-            }
-            value = -self.negamax(board, reduced_depth - 1, ply + 1, -beta, -alpha, true);
-            board.undo_move();
+            let mut nb = board.clone();
+            nb.play_unchecked(&m);
+            value = -self.negamax(&nb, reduced_depth - 1, ply + 1, -beta, -alpha, true);
 
             if self.stop {
                 return 0;
@@ -278,14 +285,13 @@ impl<'a> Search<'a> {
         }
 
         if !self.stop {
-            let hs = board.gen_hash();
             self.tt
                 .insert(hs, TTEntry::construct(hs, alpha, best_move, depth, tt_flag));
         }
         alpha
     }
 
-    pub fn q_search(&mut self, board: &mut Board, ply: Ply, mut alpha: i32, beta: i32) -> i32 {
+    pub fn q_search(&mut self, board: &Chess, ply: Ply, mut alpha: i32, beta: i32) -> i32 {
         if self.stop || self.timer.stop_check() {
             self.stop = true;
             return 0;
@@ -294,7 +300,8 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = board.fast_fast_eval();
+        let value = nnue_eval_fen(&*shakmaty::fen::epd(board));
+        // let value = fast_eval(board);
 
         if value >= beta {
             self.stats.qleafs += 1;
@@ -307,15 +314,11 @@ impl<'a> Search<'a> {
 
         let mut value;
 
-        let moves = board.gen_captures();
+        let moves = board.capture_moves();
         for m in moves {
-            board.make_move(m);
-            if board.is_checked(board.turn.not()) {
-                board.undo_move();
-                continue;
-            }
-            value = -self.q_search(board, ply + 1, -beta, -alpha);
-            board.undo_move();
+            let mut nb = board.clone();
+            nb.play_unchecked(&m);
+            value = -self.q_search(&nb, ply + 1, -beta, -alpha);
 
             if self.stop {
                 return 0;
@@ -334,7 +337,7 @@ impl<'a> Search<'a> {
 
     #[inline]
     pub fn can_apply_null(
-        board: &Board,
+        board: &Chess,
         depth: Depth,
         beta: i32,
         in_check: bool,
@@ -344,18 +347,23 @@ impl<'a> Search<'a> {
             && !in_check
             && depth >= Self::NULL_MIN_DEPTH
             // && board.has_non_pawn_material
-            && board.fast_fast_eval() >= beta
+            && fast_eval(board) >= beta
     }
 
-    pub fn get_pv(&self, board: &mut Board, depth: Depth) -> String {
+    pub fn get_pv(&self, board: &mut Chess, depth: Depth) -> String {
         if depth == 0 {
             return "".to_owned();
         }
+
+        let mut hasher = DefaultHasher::new();
+        board.board().hash(&mut hasher);
+        let hs = hasher.finish();
+
         let hash_move;
-        let tt_entry = self.tt.get(board.gen_hash());
+        let tt_entry = self.tt.get(hs);
         match tt_entry {
             Some(tt_entry) => {
-                hash_move = tt_entry.bestmove;
+                hash_move = tt_entry.bestmove.clone();
                 if hash_move == None {
                     return "".to_owned();
                 }
@@ -365,25 +373,37 @@ impl<'a> Search<'a> {
             }
         }
 
-        board.make_move(hash_move.unwrap());
-        let pv = u8_v_to_s(hash_move.unwrap().to_uci()) + " " + &*self.get_pv(board, depth - 1);
-        board.undo_move();
+        board.play_unchecked(&hash_move.clone().unwrap());
+        let pv = shakmaty::uci::Uci::from_standard(&hash_move.unwrap()).to_string()
+            + " "
+            + &*self.get_pv(board, depth - 1);
 
         pv
     }
 
-    pub fn print_info(&self, board: &mut Board, depth: Depth, m: Move, score: i32) {
+    pub fn print_info(&self, board: &Chess, depth: Depth, m: Move, score: i32) -> Option<Move> {
+        let pv = self.get_pv(&mut board.clone(), depth);
         println!(
             "info currmove {} depth {} seldepth {} time {} score cp {} nodes {} nps {} pv {}",
-            u8_v_to_s(m.to_uci()),
+            shakmaty::uci::Uci::from_standard(&m).to_string(),
             depth,
             self.sel_depth,
             self.timer.elapsed(),
             score,
             self.stats.total_nodes(),
             1000 * self.stats.total_nodes() / (self.timer.elapsed() + 1),
-            self.get_pv(board, depth)
+            pv
         );
+        if pv.len() > 0 {
+            Some(
+                Uci::from_str(pv.split(" ").collect::<Vec<&str>>()[0])
+                    .unwrap()
+                    .to_move(board)
+                    .unwrap(),
+            )
+        } else {
+            None
+        }
     }
 
     // constants

@@ -1,10 +1,10 @@
 use crate::search::Depth;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::time::Instant;
-use crate::board::{Board, Color};
-use std::sync;
+use shakmaty::{Chess, Color, Setup};
 use std::cmp::min;
+use std::sync;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::time::Instant;
 
 pub type Time = u64;
 
@@ -35,7 +35,7 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn new(board: &Board, control: TimeControl, stop: Arc<AtomicBool>) -> Timer {
+    pub fn new(board: &Chess, control: TimeControl, stop: Arc<AtomicBool>) -> Timer {
         let mut tm = Timer {
             start_time: Instant::now(),
             stop,
@@ -48,7 +48,7 @@ impl Timer {
         tm
     }
 
-    fn calc(&mut self, board: &Board) {
+    fn calc(&mut self, board: &Chess) {
         if let TimeControl::Variable {
             wtime,
             btime,
@@ -57,17 +57,17 @@ impl Timer {
             moves_to_go,
         } = self.control
         {
-            let time = if board.turn == Color::White {
+            let time = if board.turn() == Color::White {
                 wtime
             } else {
                 btime
             } as f64;
-            let inc = if board.turn == Color::White {
+            let inc = if board.turn() == Color::White {
                 winc
             } else {
                 binc
             }
-                .unwrap_or(0) as f64;
+            .unwrap_or(0) as f64;
 
             let target = time.min(time / moves_to_go.unwrap_or(40) as f64 + inc);
             self.time_target = target as Time;
