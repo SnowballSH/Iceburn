@@ -97,7 +97,7 @@ fn uci() {
                     let mut winc: usize = 0;
                     let mut binc: usize = 0;
                     let length = board.fullmoves().get() as f64;
-                    let expected_game_length: f64 = 60.0;
+                    let expected_game_length: f64 = 80.0;
                     let mut moves_to_go: f64 = expected_game_length - length;
                     if arg_slice[4] == "winc" && arg_slice[6] == "binc" {
                         winc = arg_slice[5].parse().unwrap();

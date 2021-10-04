@@ -4,7 +4,7 @@ use crate::nnue::nnue_eval_fen;
 use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
-use crate::weight::{fast_eval, is_checkmate, INF_SCORE};
+use crate::weight::{fast_eval, is_checkmate, INF_SCORE, fast_eval_endgame};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
@@ -36,6 +36,7 @@ pub struct Search<'a> {
     pub tt: &'a mut TranspositionTable,
     pub stats: Statistics,
     pub ordering_history: OrderingHistory,
+    // pub repetition_table: Vec<u64>,
 }
 
 impl<'a> Search<'a> {
@@ -196,7 +197,7 @@ impl<'a> Search<'a> {
         }
         self.stats.nodes += 1;
 
-        if board.is_insufficient_material() {
+        if board.is_insufficient_material() || board.halfmoves() >= 100 {
             self.stats.leafs += 1;
             return 0;
         }
@@ -307,7 +308,11 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = nnue_eval_fen(&*crate::chess::fen::epd(board));
+        let value = if board.fullmoves().get() > 50 {
+            fast_eval_endgame(board)
+        } else {
+            nnue_eval_fen(&*crate::chess::fen::epd(board))
+        };
         // let value = fast_eval(board);
 
         if value >= beta {
