@@ -116,9 +116,9 @@ fn uci() {
                     } else {
                         btime as f64 + binc as f64 * moves_to_go
                     } / moves_to_go
-                        * 0.98;
+                        * 0.93 - 40.0;
 
-                    time_control = TimeControl::FixedMillis(our_time as u64);
+                    time_control = TimeControl::FixedMillis(our_time.max(5.0) as u64);
                 } else {
                     time_control = TimeControl::FixedMillis(2000);
                 }

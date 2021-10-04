@@ -93,6 +93,10 @@ impl<'a> Search<'a> {
                 depth += 1;
                 self.stats = Statistics::default();
             }
+
+            if is_checkmate(final_score) {
+                break;
+            }
         }
         (final_move.unwrap(), final_score)
     }
