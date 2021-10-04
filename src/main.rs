@@ -82,7 +82,10 @@ fn uci() {
                     continue;
                 }
 
-                let arg_slice: Vec<&str> = args.split(" ").collect();
+                let mut arg_slice: Vec<&str> = args.split(" ").collect();
+                while arg_slice.len() < 10 {
+                    arg_slice.push("");
+                }
 
                 let time_control: TimeControl;
 
