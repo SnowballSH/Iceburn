@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use shakmaty::uci::Uci;
-use shakmaty::{Chess, Position};
+use crate::chess::uci::Uci;
+use crate::chess::{Chess, Position};
 
 #[derive(Clone, Debug)]
 pub struct Perft {

@@ -2,24 +2,25 @@
 
 use std::io;
 use std::process::exit;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use crate::chess::uci::Uci;
+use crate::chess::{uci, Chess, Color, Position, Setup};
 use crate::search::Search;
 use crate::timeman::{TimeControl, Timer};
 use crate::tt::TranspositionTable;
-use shakmaty::uci::Uci;
-use shakmaty::{uci, Chess, Position};
-use std::str::FromStr;
 
+pub mod chess;
 pub mod nnue;
+pub mod ordering;
 pub mod perft;
 pub mod search;
 pub mod timeman;
 pub mod tt;
 pub mod utils;
 pub mod weight;
-pub mod ordering;
 
 fn read_line() -> String {
     let mut line = String::new();
@@ -81,8 +82,46 @@ fn uci() {
                     continue;
                 }
 
+                let arg_slice: Vec<&str> = args.split(" ").collect();
+
+                let time_control: TimeControl;
+
+                if arg_slice[0] == "movetime" {
+                    time_control = TimeControl::FixedMillis(arg_slice[1].parse().unwrap());
+                } else if arg_slice[0] == "wtime" && arg_slice[2] == "btime" {
+                    let wtime: usize = arg_slice[1].parse().unwrap();
+                    let btime: usize = arg_slice[3].parse().unwrap();
+                    let mut winc: usize = 0;
+                    let mut binc: usize = 0;
+                    let length = board.fullmoves().get() as f64;
+                    let expected_game_length: f64 = 60.0;
+                    let mut moves_to_go: f64 = expected_game_length - length;
+                    if arg_slice[4] == "winc" && arg_slice[6] == "binc" {
+                        winc = arg_slice[5].parse().unwrap();
+                        binc = arg_slice[7].parse().unwrap();
+                        if arg_slice[8] == "movestogo" {
+                            moves_to_go = arg_slice[9].parse().unwrap();
+                        }
+                    } else {
+                        if arg_slice[4] == "movestogo" {
+                            moves_to_go = arg_slice[5].parse().unwrap();
+                        }
+                    }
+
+                    let our_time = if board.turn() == Color::White {
+                        wtime as f64 + winc as f64 * moves_to_go
+                    } else {
+                        btime as f64 + binc as f64 * moves_to_go
+                    } / moves_to_go
+                        * 0.98;
+
+                    time_control = TimeControl::FixedMillis(our_time as u64);
+                } else {
+                    time_control = TimeControl::FixedMillis(2000);
+                }
+
                 let mut searcher = Search::new(
-                    Timer::new(&board, TimeControl::FixedMillis(5000), stop_search.clone()),
+                    Timer::new(&board, time_control, stop_search.clone()),
                     &mut tt,
                 );
                 let res = searcher.mtdf(&mut board);

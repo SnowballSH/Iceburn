@@ -1,5 +1,5 @@
+use crate::chess::{Chess, Color, Setup};
 use crate::search::Depth;
-use shakmaty::{Chess, Color, Setup};
 use std::cmp::min;
 use std::sync;
 use std::sync::atomic::AtomicBool;

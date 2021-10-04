@@ -1,13 +1,13 @@
+use crate::chess::uci::Uci;
+use crate::chess::{Chess, Move, Position, Setup};
 use crate::nnue::nnue_eval_fen;
+use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
 use crate::weight::{fast_eval, is_checkmate, INF_SCORE};
-use shakmaty::uci::Uci;
-use shakmaty::{Chess, Move, Position, Setup};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-use crate::ordering::MoveOrderer;
 
 pub type Depth = i8;
 pub type Ply = usize;
@@ -35,6 +35,7 @@ pub struct Search<'a> {
     pub timer: Timer,
     pub tt: &'a mut TranspositionTable,
     pub stats: Statistics,
+    pub ordering_history: OrderingHistory,
 }
 
 impl<'a> Search<'a> {
@@ -45,6 +46,7 @@ impl<'a> Search<'a> {
             timer,
             tt,
             stats: Statistics::default(),
+            ordering_history: OrderingHistory::default(),
         }
     }
 
@@ -119,8 +121,14 @@ impl<'a> Search<'a> {
         board.board().hash(&mut hasher);
         let hs = hasher.finish();
 
+        let mut hash_move = None;
+        if let Some(ttentry) = self.tt.get(hs) {
+            hash_move = ttentry.bestmove.clone();
+        }
+
         let mut value;
-        for m in moves {
+        let mut orderer = MoveOrderer::new(moves);
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
             value = -self.negamax(&mut nb, depth - 1, 1, -beta, -alpha, true);
@@ -197,6 +205,7 @@ impl<'a> Search<'a> {
         board.board().hash(&mut hasher);
         let hs = hasher.finish();
 
+        let mut hash_move = None;
         if let Some(tt_entry) = self.tt.get(hs) {
             if tt_entry.depth >= depth {
                 self.stats.tt_hits += 1;
@@ -219,6 +228,7 @@ impl<'a> Search<'a> {
                     return tt_entry.score;
                 }
             }
+            hash_move = tt_entry.bestmove.clone();
         }
 
         if Self::can_apply_null(board, depth, beta, in_check, can_apply_null) {
@@ -243,14 +253,8 @@ impl<'a> Search<'a> {
         let lmoves = moves.len();
         let mut orderer = MoveOrderer::new(moves);
 
-        while let Some(m) = orderer.next_move() {
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move) {
             reduced_depth = depth;
-            /*
-            if Self::can_apply_lmr(&m, depth, idx) {
-                reduced_depth -= Self::late_move_reduction(depth, idx);
-            }
-             */
-
             if in_check {
                 reduced_depth += 1;
             }
@@ -264,8 +268,11 @@ impl<'a> Search<'a> {
             }
 
             if value > alpha {
-                best_move = Some(m);
+                best_move = Some(m.clone());
                 if value >= beta {
+                    if !m.is_capture() && !m.is_promotion() {
+                        self.ordering_history.add_history(&m, depth);
+                    }
                     self.stats.beta_cutoffs += 1;
                     tt_flag = TTFlag::Lower;
                     alpha = beta;
@@ -300,7 +307,7 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = nnue_eval_fen(&*shakmaty::fen::epd(board));
+        let value = nnue_eval_fen(&*crate::chess::fen::epd(board));
         // let value = fast_eval(board);
 
         if value >= beta {
@@ -312,10 +319,21 @@ impl<'a> Search<'a> {
             alpha = value;
         }
 
+        let mut hasher = DefaultHasher::new();
+        board.board().hash(&mut hasher);
+        let hs = hasher.finish();
+
+        let mut hash_move = None;
+        if let Some(ttentry) = self.tt.get(hs) {
+            hash_move = ttentry.bestmove.clone();
+        }
+
         let mut value;
 
         let moves = board.capture_moves();
-        for m in moves {
+        let mut orderer = MoveOrderer::new(moves);
+
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
             value = -self.q_search(&nb, ply + 1, -beta, -alpha);
@@ -374,7 +392,7 @@ impl<'a> Search<'a> {
         }
 
         board.play_unchecked(&hash_move.clone().unwrap());
-        let pv = shakmaty::uci::Uci::from_standard(&hash_move.unwrap()).to_string()
+        let pv = crate::chess::uci::Uci::from_standard(&hash_move.unwrap()).to_string()
             + " "
             + &*self.get_pv(board, depth - 1);
 
@@ -385,7 +403,7 @@ impl<'a> Search<'a> {
         let pv = self.get_pv(&mut board.clone(), depth);
         println!(
             "info currmove {} depth {} seldepth {} time {} score cp {} nodes {} nps {} pv {}",
-            shakmaty::uci::Uci::from_standard(&m).to_string(),
+            crate::chess::uci::Uci::from_standard(&m).to_string(),
             depth,
             self.sel_depth,
             self.timer.elapsed(),

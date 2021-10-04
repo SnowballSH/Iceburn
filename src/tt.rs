@@ -1,5 +1,5 @@
+use crate::chess::Move;
 use crate::search::Depth;
-use shakmaty::Move;
 
 #[derive(Copy, Clone, Debug, Eq, PartialOrd, PartialEq)]
 pub enum TTFlag {

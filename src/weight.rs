@@ -1,4 +1,4 @@
-use shakmaty::{Chess, Color, Setup};
+use crate::chess::{Chess, Color, Setup};
 
 pub const MATERIAL_OPENING: [i32; 6] = [110, 280, 330, 550, 1080, 20000];
 pub const INF_SCORE: i32 = i32::MAX - 10000;
