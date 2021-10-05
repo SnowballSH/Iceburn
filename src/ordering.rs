@@ -1,5 +1,6 @@
-use crate::chess::{Move, MoveList};
+use crate::chess::{Move, MoveList, Setup};
 use crate::search::Depth;
+use shakmaty::Chess;
 
 #[rustfmt::skip]
 pub const MMV_LVA: [u16; 36] = [
@@ -14,12 +15,60 @@ pub const MMV_LVA: [u16; 36] = [
 #[derive(Debug)]
 pub struct OrderingHistory {
     pub history_moves: [[u16; 64]; 64],
+    pub killer_moves: [[Option<Move>; 512]; 2],
 }
+
+macro_rules! none_512 {
+    () => {
+        [
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None,
+        ]
+    };
+}
+
+const NONE512: [Option<Move>; 512] = none_512!();
 
 impl Default for OrderingHistory {
     fn default() -> Self {
         OrderingHistory {
             history_moves: [[0; 64]; 64],
+            killer_moves: [NONE512, NONE512],
         }
     }
 }
@@ -36,6 +85,20 @@ impl OrderingHistory {
                 .iter_mut()
                 .for_each(|x| x.iter_mut().for_each(|y| *y /= 2));
         }
+    }
+
+    ///https://www.chessprogramming.org/Killer_Heuristic
+    pub fn is_killer(&self, board: &Chess, m: Move, ply: usize) -> bool {
+        let color = board.turn() as usize;
+        if self.killer_moves[color][ply] == Some(m) {
+            return true;
+        }
+        false
+    }
+
+    pub fn add_killer(&mut self, board: &Chess, m: Move, ply: usize) {
+        let color = board.turn() as usize;
+        self.killer_moves[color][ply] = Some(m);
     }
 }
 
@@ -56,7 +119,14 @@ impl MoveOrderer {
         }
     }
 
-    pub fn score_of(&self, m: &Move, oh: &OrderingHistory, hash_move: &Option<Move>) -> u16 {
+    pub fn score_of(
+        &self,
+        m: &Move,
+        oh: &OrderingHistory,
+        hash_move: &Option<Move>,
+        board: &Chess,
+        ply: usize,
+    ) -> u16 {
         let mut score = 0;
 
         if let Some(hash_move) = hash_move {
@@ -65,31 +135,41 @@ impl MoveOrderer {
             }
         }
 
+        if oh.is_killer(board, m.clone(), ply) {
+            score += 90;
+        }
+
         score += if m.is_capture() {
             MMV_LVA[(m.role() as usize - 1) * 6 + (m.capture().unwrap() as usize - 1)] + 200
         } else if m.is_promotion() {
             5000
         } else if m.is_zeroing() {
-            100
+            1
         } else {
-            80.min(oh.history_moves[m.from().unwrap() as usize][m.to() as usize])
+            90.min(oh.history_moves[m.from().unwrap() as usize][m.to() as usize])
         };
 
         score
     }
 
-    pub fn next_move(&mut self, oh: &OrderingHistory, hash_move: &Option<Move>) -> Option<Move> {
+    pub fn next_move(
+        &mut self,
+        oh: &OrderingHistory,
+        hash_move: &Option<Move>,
+        board: &Chess,
+        ply: usize,
+    ) -> Option<Move> {
         if self.index >= self.ml.len() {
             return None;
         }
 
         let mut max = self.index;
         if self.score_list[max].is_none() {
-            self.score_list[max] = Some(self.score_of(&self.ml[max], oh, hash_move));
+            self.score_list[max] = Some(self.score_of(&self.ml[max], oh, hash_move, board, ply));
         }
         for j in self.index + 1..self.ml.len() {
             if self.score_list[j].is_none() {
-                self.score_list[j] = Some(self.score_of(&self.ml[j], oh, hash_move));
+                self.score_list[j] = Some(self.score_of(&self.ml[j], oh, hash_move, board, ply));
             }
             if self.score_list[j] > self.score_list[max] {
                 max = j;

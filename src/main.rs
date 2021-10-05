@@ -1,13 +1,16 @@
 #![feature(core_intrinsics)]
 
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::process::exit;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use crate::chess::fen::Fen;
 use crate::chess::uci::Uci;
-use crate::chess::{uci, Chess, Color, Position, Setup};
+use crate::chess::{uci, CastlingMode, Chess, Color, FromSetup, Position, Setup};
 use crate::search::Search;
 use crate::timeman::{TimeControl, Timer};
 use crate::tt::TranspositionTable;
@@ -30,6 +33,7 @@ fn read_line() -> String {
 
 fn uci() {
     let mut board = Chess::default();
+    let mut move_table = Vec::with_capacity(100);
     let mut tt = TranspositionTable::default();
     let stop_search = Arc::new(AtomicBool::new(false));
 
@@ -60,6 +64,25 @@ fn uci() {
                 println!("uciok");
             }
             "position" => {
+                if args.starts_with("fen") {
+                    let fenpart = &args[4..];
+                    board = Chess::from_setup(
+                        &Fen::from_ascii(fenpart.as_bytes()).unwrap(),
+                        CastlingMode::Standard,
+                    )
+                    .unwrap();
+                    move_table.clear();
+                    continue;
+                }
+
+                if args.starts_with("startpos") {
+                    move_table.clear();
+                    board = Chess::default();
+                    if args == "startpos" {
+                        continue;
+                    }
+                }
+
                 let idx = args.find("moves");
 
                 let moves = if let Some(x) = idx {
@@ -69,10 +92,12 @@ fn uci() {
                     vec![]
                 };
 
-                board = Chess::default();
-
                 for m in moves {
                     board.play_unchecked(&uci::Uci::from_str(m).unwrap().to_move(&board).unwrap());
+                    let mut hasher = DefaultHasher::new();
+                    board.board().hash(&mut hasher);
+                    let hs = hasher.finish();
+                    move_table.push(hs);
                 }
             }
             "go" => {
@@ -116,7 +141,8 @@ fn uci() {
                     } else {
                         btime as f64 + binc as f64 * moves_to_go
                     } / moves_to_go
-                        * 0.93 - 40.0;
+                        * 0.93
+                        - 40.0;
 
                     time_control = TimeControl::FixedMillis(our_time.max(5.0) as u64);
                 } else {
@@ -127,6 +153,7 @@ fn uci() {
                     Timer::new(&board, time_control, stop_search.clone()),
                     &mut tt,
                 );
+                searcher.move_table = move_table.clone();
                 let res = searcher.mtdf(&mut board);
                 let best_move = res.0;
                 let best_score = res.1;
