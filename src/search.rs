@@ -67,6 +67,10 @@ impl<'a> Search<'a> {
         }
 
         while !self.stop && self.timer.start_check(depth) && !is_checkmate(final_score) {
+            if board.is_game_over() {
+                break;
+            }
+
             let res = self.negamax_root(board, depth, alpha, beta);
 
             if self.stop {
@@ -80,6 +84,8 @@ impl<'a> Search<'a> {
                 self.timer.update(final_score - last_score);
             }
             last_score = final_score;
+
+            final_move = Some(cur_move.clone());
 
             if final_score <= alpha {
                 alpha = -INF_SCORE;
@@ -142,6 +148,11 @@ impl<'a> Search<'a> {
             let mut hasher = DefaultHasher::new();
             nb.board().hash(&mut hasher);
             let nhs = hasher.finish();
+
+            if nb.is_checkmate() {
+                return (m.clone(), INF_SCORE);
+            }
+
             self.move_table.push(nhs);
 
             value = -self.negamax(&mut nb, depth - 1, 1, -beta, -alpha, true);
@@ -277,6 +288,10 @@ impl<'a> Search<'a> {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
+            if nb.is_checkmate() {
+                return INF_SCORE - ply as i32;
+            }
+
             let mut hasher = DefaultHasher::new();
             nb.board().hash(&mut hasher);
             let nhs = hasher.finish();
@@ -331,7 +346,7 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = if board.fullmoves().get() > 50 {
+        let value = if board.fullmoves().get() > 65 {
             fast_eval_endgame(board)
         } else {
             nnue_eval_fen(&*crate::chess::fen::epd(board))
@@ -365,6 +380,10 @@ impl<'a> Search<'a> {
         while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
+
+            if nb.is_checkmate() {
+                return INF_SCORE - ply as i32;
+            }
 
             let mut hasher = DefaultHasher::new();
             nb.board().hash(&mut hasher);
@@ -470,4 +489,18 @@ impl<'a> Search<'a> {
     // constants
     pub const NULL_MIN_DEPTH: Depth = 2;
     const ASPIRATION_WINDOW: i32 = 25;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::weight::{is_checkmate, INF_SCORE};
+
+    #[test]
+    fn is_mate() {
+        let score = 66666;
+        assert!(!is_checkmate(score));
+
+        let score = INF_SCORE - 20;
+        assert!(is_checkmate(score));
+    }
 }

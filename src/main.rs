@@ -12,6 +12,7 @@ use crate::chess::fen::Fen;
 use crate::chess::uci::Uci;
 use crate::chess::{uci, CastlingMode, Chess, Color, FromSetup, Position, Setup};
 use crate::search::Search;
+use crate::time::calc_time;
 use crate::timeman::{TimeControl, Timer};
 use crate::tt::TranspositionTable;
 
@@ -20,6 +21,7 @@ pub mod nnue;
 pub mod ordering;
 pub mod perft;
 pub mod search;
+pub mod time;
 pub mod timeman;
 pub mod tt;
 pub mod utils;
@@ -122,8 +124,8 @@ fn uci() {
                     let mut winc: usize = 0;
                     let mut binc: usize = 0;
                     let length = board.fullmoves().get() as f64;
-                    let expected_game_length: f64 = 80.0;
-                    let mut moves_to_go: f64 = expected_game_length - length;
+                    let expected_game_length: f64 = 85.0;
+                    let mut moves_to_go: f64 = (expected_game_length - length).max(1.5);
                     if arg_slice[4] == "winc" && arg_slice[6] == "binc" {
                         winc = arg_slice[5].parse().unwrap();
                         binc = arg_slice[7].parse().unwrap();
@@ -136,15 +138,22 @@ fn uci() {
                         }
                     }
 
-                    let our_time = if board.turn() == Color::White {
+                    let left = if board.turn() == Color::White {
                         wtime as f64 + winc as f64 * moves_to_go
                     } else {
                         btime as f64 + binc as f64 * moves_to_go
-                    } / moves_to_go
-                        * 0.93
-                        - 40.0;
+                    };
 
-                    time_control = TimeControl::FixedMillis(our_time.max(5.0) as u64);
+                    let mut our_time = left / moves_to_go;
+
+                    our_time = calc_time(length, our_time);
+
+                    time_control = TimeControl::FixedMillis(
+                        our_time
+                            .max(1.0)
+                            // must be in time
+                            .min(left - 1.0) as u64,
+                    );
                 } else {
                     time_control = TimeControl::FixedMillis(2000);
                 }

@@ -5,7 +5,7 @@ pub const MATERIAL_ENDGAME: [i32; 6] = [140, 582, 617, 928, 1808, 20000];
 pub const INF_SCORE: i32 = i32::MAX - 10000;
 
 pub fn is_checkmate(value: i32) -> bool {
-    2 * value.abs() >= INF_SCORE
+    value.abs() >= INF_SCORE - 200
 }
 
 /// https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
