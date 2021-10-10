@@ -85,8 +85,6 @@ impl<'a> Search<'a> {
             }
             last_score = final_score;
 
-            final_move = Some(cur_move.clone());
-
             if final_score <= alpha {
                 alpha = -INF_SCORE;
             } else if final_score >= beta {
@@ -148,10 +146,6 @@ impl<'a> Search<'a> {
             let mut hasher = DefaultHasher::new();
             nb.board().hash(&mut hasher);
             let nhs = hasher.finish();
-
-            if nb.is_checkmate() {
-                return (m.clone(), INF_SCORE);
-            }
 
             self.move_table.push(nhs);
 
@@ -288,10 +282,6 @@ impl<'a> Search<'a> {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
-            if nb.is_checkmate() {
-                return INF_SCORE - ply as i32;
-            }
-
             let mut hasher = DefaultHasher::new();
             nb.board().hash(&mut hasher);
             let nhs = hasher.finish();
@@ -380,10 +370,6 @@ impl<'a> Search<'a> {
         while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
-
-            if nb.is_checkmate() {
-                return INF_SCORE - ply as i32;
-            }
 
             let mut hasher = DefaultHasher::new();
             nb.board().hash(&mut hasher);
