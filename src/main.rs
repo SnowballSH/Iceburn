@@ -3,7 +3,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io;
-use std::ops::AddAssign;
 use std::process::exit;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -12,7 +11,7 @@ use std::sync::Arc;
 use crate::chess::fen::Fen;
 use crate::chess::uci::Uci;
 use crate::chess::{uci, CastlingMode, Chess, Color, FromSetup, Position, Setup};
-use crate::nnue::decode_board;
+use crate::nnue::NNUE_FILE;
 use crate::search::Search;
 use crate::time::calc_time;
 use crate::timeman::{TimeControl, Timer};
@@ -181,6 +180,6 @@ fn uci() {
 
 fn main() {
     // init nnue
-    nnue::nnue_init("./nnue/nn-62ef826d1a6d.nnue");
+    nnue::nnue_init(NNUE_FILE);
     uci();
 }

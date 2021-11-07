@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use crate::chess::uci::Uci;
 use crate::chess::{Chess, Move, Position, Setup};
-use crate::nnue::nnue_eval_normal;
+use crate::nnue::{nnue_eval_fen, nnue_eval_normal};
 use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
@@ -339,7 +339,7 @@ impl<'a> Search<'a> {
         let value = if board.fullmoves().get() > 70 {
             fast_eval_endgame(board)
         } else {
-            // nnue_eval_fen(&*crate::chess::fen::epd(board))
+            // nnue_eval_fen(&*crate::chess::fen::fen(board))
             nnue_eval_normal(board)
             // fast_eval(board)
         };
