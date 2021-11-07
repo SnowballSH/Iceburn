@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use crate::chess::uci::Uci;
 use crate::chess::{Chess, Move, Position, Setup};
-use crate::nnue::nnue_eval_fen;
+use crate::nnue::nnue_eval_normal;
 use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
@@ -336,10 +336,11 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = if board.fullmoves().get() > 65 {
+        let value = if board.fullmoves().get() > 70 {
             fast_eval_endgame(board)
         } else {
-            nnue_eval_fen(&*crate::chess::fen::epd(board))
+            // nnue_eval_fen(&*crate::chess::fen::epd(board))
+            nnue_eval_normal(board)
             // fast_eval(board)
         };
         // let value = fast_eval(board);
@@ -408,10 +409,11 @@ impl<'a> Search<'a> {
         in_check: bool,
         can_apply_null: bool,
     ) -> bool {
+        let mt = board.board().material_side(board.turn());
         can_apply_null
             && !in_check
             && depth >= Self::NULL_MIN_DEPTH
-            // && board.has_non_pawn_material
+            && (mt.count() - mt.pawns as usize) > 0
             && fast_eval(board) >= beta
     }
 

@@ -3,6 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io;
+use std::ops::AddAssign;
 use std::process::exit;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use crate::chess::fen::Fen;
 use crate::chess::uci::Uci;
 use crate::chess::{uci, CastlingMode, Chess, Color, FromSetup, Position, Setup};
+use crate::nnue::decode_board;
 use crate::search::Search;
 use crate::time::calc_time;
 use crate::timeman::{TimeControl, Timer};
@@ -69,7 +71,7 @@ fn uci() {
                 if args.starts_with("fen") {
                     let fenpart = &args[4..];
                     board = Chess::from_setup(
-                        &Fen::from_ascii(fenpart.as_bytes()).unwrap(),
+                        &Fen::from_str(fenpart).unwrap_or_else(|x| panic!("{}", x)),
                         CastlingMode::Standard,
                     )
                     .unwrap();
