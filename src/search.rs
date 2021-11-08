@@ -2,13 +2,15 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
+use lazy_static::lazy_static;
+
 use crate::chess::uci::Uci;
 use crate::chess::{Chess, Move, Position, Setup};
-use crate::nnue::{nnue_eval_fen, nnue_eval_normal};
+use crate::nnue::nnue_eval_normal;
 use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
-use crate::weight::{fast_eval, fast_eval_endgame, is_checkmate, INF_SCORE};
+use crate::weight::{fast_eval, is_checkmate, INF_SCORE};
 
 pub type Depth = i8;
 pub type Ply = usize;
@@ -184,10 +186,11 @@ impl<'a> Search<'a> {
         (best_move.clone(), alpha)
     }
 
+    /// core negamax search
     pub fn negamax(
         &mut self,
         board: &Chess,
-        depth: Depth,
+        mut depth: Depth,
         ply: Ply,
         mut alpha: i32,
         mut beta: i32,
@@ -198,6 +201,8 @@ impl<'a> Search<'a> {
             return 0;
         }
 
+        // Mate distance pruning
+        // https://www.chessprogramming.org/Mate_Distance_Pruning
         let mate_value = INF_SCORE - (ply as i32);
         if alpha < -mate_value {
             alpha = -mate_value;
@@ -211,20 +216,32 @@ impl<'a> Search<'a> {
         }
 
         let in_check = board.is_check();
+
+        // Extend search in check
+        if in_check {
+            depth += 1;
+        }
+        depth = depth.max(0);
+
+        // Quiescence search
+        // when depth is zero, we go for captures
         if depth <= 0 && !in_check {
             return self.q_search(board, ply, alpha, beta);
         }
+
         self.stats.nodes += 1;
 
         let mut hasher = DefaultHasher::new();
         board.board().hash(&mut hasher);
         let hs = hasher.finish();
 
+        // Fifty-move rule and Repetitions
         if board.halfmoves() >= 100 || self.is_repetition(hs) {
             self.stats.leafs += 1;
             return 0;
         }
 
+        // Transposition Table
         let mut hash_move = None;
         if let Some(tt_entry) = self.tt.get(hs) {
             if tt_entry.depth >= depth {
@@ -251,6 +268,8 @@ impl<'a> Search<'a> {
             hash_move = tt_entry.bestmove.clone();
         }
 
+        // Null Move Pruning
+        // Borrowed from https://github.com/Heiaha/Weiawaga/blob/92d1c9b7f78ec6a6f8762d8719fa7e8a871cf8df/src/search/search.rs#L224
         if Self::can_apply_null(board, depth, beta, in_check, can_apply_null) {
             let r = if depth > 6 { 3 } else { 2 };
 
@@ -273,12 +292,9 @@ impl<'a> Search<'a> {
         let lmoves = moves.len();
         let mut orderer = MoveOrderer::new(moves);
 
-        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
-            reduced_depth = depth;
-            if in_check {
-                reduced_depth += 1;
-            }
+        let mut pidx = 0;
 
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
@@ -287,7 +303,31 @@ impl<'a> Search<'a> {
             let nhs = hasher.finish();
             self.move_table.push(nhs);
 
-            value = -self.negamax(&nb, reduced_depth - 1, ply + 1, -beta, -alpha, true);
+            // PVS
+            if pidx == 0 {
+                value = -self.negamax(&nb, depth - 1, ply + 1, -beta, -alpha, true);
+            } else {
+                reduced_depth = depth;
+
+                // LMR
+                if Self::can_apply_lmr(&m, depth, pidx) {
+                    reduced_depth -= Self::late_move_reduction(depth, pidx);
+                }
+
+                loop {
+                    value =
+                        -self.negamax(&nb, reduced_depth - 1, ply + 1, -alpha - 1, -alpha, true);
+                    if value > alpha {
+                        value = -self.negamax(&nb, reduced_depth - 1, ply + 1, -beta, -alpha, true);
+                    }
+
+                    if reduced_depth != depth && value > alpha {
+                        reduced_depth = depth;
+                    } else {
+                        break;
+                    }
+                }
+            }
 
             self.move_table.pop();
 
@@ -295,6 +335,7 @@ impl<'a> Search<'a> {
                 return 0;
             }
 
+            // Cutoff, TT storage
             if value > alpha {
                 best_move = Some(m.clone());
                 if value >= beta {
@@ -310,6 +351,8 @@ impl<'a> Search<'a> {
                 tt_flag = TTFlag::Exact;
                 alpha = value;
             }
+
+            pidx += 1;
         }
 
         if lmoves == 0 {
@@ -336,14 +379,7 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = if board.fullmoves().get() > 70 {
-            fast_eval_endgame(board)
-        } else {
-            // nnue_eval_fen(&*crate::chess::fen::fen(board))
-            nnue_eval_normal(board)
-            // fast_eval(board)
-        };
-        // let value = fast_eval(board);
+        let value = nnue_eval_normal(board);
 
         if value >= beta {
             self.stats.qleafs += 1;
@@ -397,12 +433,12 @@ impl<'a> Search<'a> {
     }
 
     #[inline]
-    pub fn is_repetition(&self, position: u64) -> bool {
+    fn is_repetition(&self, position: u64) -> bool {
         self.move_table.iter().rev().skip(1).any(|&x| x == position)
     }
 
     #[inline]
-    pub fn can_apply_null(
+    fn can_apply_null(
         board: &Chess,
         depth: Depth,
         beta: i32,
@@ -415,6 +451,19 @@ impl<'a> Search<'a> {
             && depth >= Self::NULL_MIN_DEPTH
             && (mt.count() - mt.pawns as usize) > 0
             && fast_eval(board) >= beta
+    }
+
+    #[inline]
+    fn can_apply_lmr(m: &Move, depth: Depth, move_index: usize) -> bool {
+        depth >= Self::LMR_MIN_DEPTH
+            && move_index >= Self::LMR_MOVE_WO_REDUCTION
+            && !m.is_promotion()
+            && !m.is_capture()
+    }
+
+    #[inline]
+    fn late_move_reduction(depth: Depth, move_index: usize) -> Depth {
+        LMR_TABLE[(depth as usize).min(63)][move_index.min(63)]
     }
 
     pub fn get_pv(&self, board: &mut Chess, depth: Depth) -> String {
@@ -477,6 +526,27 @@ impl<'a> Search<'a> {
     // constants
     pub const NULL_MIN_DEPTH: Depth = 2;
     const ASPIRATION_WINDOW: i32 = 25;
+
+    const LMR_MOVE_WO_REDUCTION: usize = 2;
+    const LMR_MIN_DEPTH: Depth = 3;
+    const LMR_BASE_REDUCTION: f32 = 0.75;
+    const LMR_MOVE_DIVIDER: f32 = 2.25;
+}
+
+lazy_static! {
+    pub static ref LMR_TABLE: [[Depth; 64]; 64] = init_lmr_table();
+}
+
+fn init_lmr_table() -> [[Depth; 64]; 64] {
+    let mut lmr_table = [[0; 64]; 64];
+    for depth in 1..64 {
+        for move_number in 1..64 {
+            lmr_table[depth][move_number] = (Search::LMR_BASE_REDUCTION
+                + f32::ln(depth as f32) * f32::ln(move_number as f32) / Search::LMR_MOVE_DIVIDER)
+                as Depth;
+        }
+    }
+    lmr_table
 }
 
 #[cfg(test)]

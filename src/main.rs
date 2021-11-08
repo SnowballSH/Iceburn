@@ -21,6 +21,7 @@ pub mod chess;
 pub mod nnue;
 pub mod ordering;
 pub mod perft;
+pub mod pruning;
 pub mod search;
 pub mod time;
 pub mod timeman;

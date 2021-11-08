@@ -1,11 +1,22 @@
 import argparse
 import os
 
-THREADS = 3
+THREADS = 2
 
-GAMES = 20
-TIME = 10.0
-INC = 0.1
+control = "STC"
+
+if control == "STC":
+    GAMES = 30
+    TIME = 10.0
+    INC = 0.1
+elif control == "SSTC":
+    GAMES = 50
+    TIME = 4.0
+    INC = 0.03
+else:
+    GAMES = 5
+    TIME = 2.0
+    INC = 0.1
 
 OPENINGS = (
     ("e2e4", "e7e5"),
@@ -27,7 +38,7 @@ def run_once(id_: int, q):
             print(f"WIN {stat[0]} DRAW {stat[1]} LOSE {stat[2]}")
 
         e1 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
-        e2 = chess.engine.SimpleEngine.popen_uci("./old/oct10.exe")
+        e2 = chess.engine.SimpleEngine.popen_uci("./old/nov7.exe")
 
         reverse = g % 2 == 1
 

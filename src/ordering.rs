@@ -143,8 +143,6 @@ impl MoveOrderer {
             MMV_LVA[(m.role() as usize - 1) * 6 + (m.capture().unwrap() as usize - 1)] + 200
         } else if m.is_promotion() {
             5000
-        } else if m.is_zeroing() {
-            1
         } else {
             90.min(oh.history_moves[m.from().unwrap() as usize][m.to() as usize])
         };
