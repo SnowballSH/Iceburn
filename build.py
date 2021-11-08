@@ -22,8 +22,11 @@ OPENINGS = (
     ("e2e4", "e7e5"),
     ("e2e4", "c7c5"),
     ("e2e4", "e7e6"),
-    ("d2d4", "d7d5"),
-    ("d2d4", "g8f6"),
+    ("d2d4", "d7d5", "c2c4", "d5c4"),
+    ("d2d4", "d7d5", "e2e3", "e7e6"),
+    ("d2d4", "g8f6", "c2c4", "d7d5"),
+    ("d2d4", "g8f6", "c2c4", "g7g6"),
+    ("c2c4", "e7e5", "b1c3", "g8f6"),
 )
 
 
@@ -38,7 +41,7 @@ def run_once(id_: int, q):
             print(f"WIN {stat[0]} DRAW {stat[1]} LOSE {stat[2]}")
 
         e1 = chess.engine.SimpleEngine.popen_uci("./target/release/iceburn.exe")
-        e2 = chess.engine.SimpleEngine.popen_uci("./old/nov7.exe")
+        e2 = chess.engine.SimpleEngine.popen_uci("./old/nov7_2.exe")
 
         reverse = g % 2 == 1
 

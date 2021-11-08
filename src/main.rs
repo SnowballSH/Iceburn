@@ -126,8 +126,8 @@ fn uci() {
                     let mut winc: usize = 0;
                     let mut binc: usize = 0;
                     let length = board.fullmoves().get() as f64;
-                    let expected_game_length: f64 = 85.0;
-                    let mut moves_to_go: f64 = (expected_game_length - length).max(1.5);
+                    let expected_game_length: f64 = 50.0;
+                    let mut moves_to_go: f64 = 20f64.max(expected_game_length - length);
                     if arg_slice[4] == "winc" && arg_slice[6] == "binc" {
                         winc = arg_slice[5].parse().unwrap();
                         binc = arg_slice[7].parse().unwrap();
@@ -141,14 +141,20 @@ fn uci() {
                     }
 
                     let left = if board.turn() == Color::White {
-                        wtime as f64 + winc as f64 * moves_to_go
+                        wtime as f64
                     } else {
-                        btime as f64 + binc as f64 * moves_to_go
+                        btime as f64
                     };
 
-                    let mut our_time = left / moves_to_go;
-
-                    our_time = calc_time(length, our_time);
+                    let our_time = calc_time(
+                        moves_to_go,
+                        left,
+                        if board.turn() == Color::White {
+                            winc as f64
+                        } else {
+                            binc as f64
+                        },
+                    );
 
                     time_control = TimeControl::FixedMillis(
                         our_time
