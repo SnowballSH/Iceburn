@@ -170,7 +170,7 @@ fn uci() {
                 let best_score = res.1;
                 println!("info score cp {}", best_score);
                 println!("bestmove {}", Uci::from_standard(&best_move));
-                // tt.clear();
+                tt.clear();
             }
             _ => {
                 println!("No such command")
