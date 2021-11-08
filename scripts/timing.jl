@@ -10,20 +10,20 @@ using Plots
 # ╔═╡ c0934e70-294e-11ec-0eef-3f0b731d8cb3
 function timing(length::Float64)
 	rate::Float64 = 1;
-	if length >= 14.0
-		if length <= 20.0
-			rate *= 0.90 + (length - 15.0) * 0.45
+	if length >= 10.0
+		if length <= 18.0
+			rate *= 0.90 + (length - 10.0) * 0.45
 		elseif length <= 24.0
-			rate *= 0.90 + (20.0 - 15.0) * 0.45
+			rate *= 0.90 + (18.0 - 10.0) * 0.45
 		elseif length <= 28.0
 			rate *= 0.80 + (28.0 - length) * 0.25
 		elseif length <= 70.0
 			rate *= 0.10 + 5.00 / (length - 20.0)
 		else
-			rate *= 0.02 + (150.0 - length) * 0.0002
+			rate *= 0.03 + (150.0 - length) * 0.0002
 		end
 	else
-		rate *= 0.06 + 2.00 / (-length + 18.0)
+		rate *= 0.15 + 4.00 / (-length + 18.0)
 	end
 	return rate * 0.95
 end
