@@ -40,10 +40,13 @@ pub struct Search<'a> {
     pub stats: Statistics,
     pub ordering_history: OrderingHistory,
     pub move_table: Vec<u64>,
+    pub move_table_index_stack: Vec<usize>,
 }
 
 impl<'a> Search<'a> {
     pub fn new(timer: Timer, tt: &'a mut TranspositionTable) -> Self {
+        let mut is = Vec::with_capacity(80);
+        is.push(0);
         Search {
             stop: false,
             sel_depth: 0,
@@ -51,7 +54,8 @@ impl<'a> Search<'a> {
             tt,
             stats: Statistics::default(),
             ordering_history: OrderingHistory::default(),
-            move_table: Vec::with_capacity(100),
+            move_table: Vec::with_capacity(80),
+            move_table_index_stack: is,
         }
     }
 
@@ -150,10 +154,16 @@ impl<'a> Search<'a> {
             let nhs = hasher.finish();
 
             self.move_table.push(nhs);
+            if m.is_zeroing() {
+                self.move_table_index_stack.push(self.move_table.len() - 1);
+            }
 
             value = -self.negamax(&mut nb, depth - 1, 1, -beta, -alpha, true);
 
             self.move_table.pop();
+            if m.is_zeroing() {
+                self.move_table_index_stack.pop();
+            }
 
             if self.stop || self.timer.stop_check() {
                 self.stop = true;
@@ -302,6 +312,9 @@ impl<'a> Search<'a> {
             nb.board().hash(&mut hasher);
             let nhs = hasher.finish();
             self.move_table.push(nhs);
+            if m.is_zeroing() {
+                self.move_table_index_stack.push(self.move_table.len());
+            }
 
             // PVS
             if pidx == 0 {
@@ -330,6 +343,9 @@ impl<'a> Search<'a> {
             }
 
             self.move_table.pop();
+            if m.is_zeroing() {
+                self.move_table_index_stack.pop();
+            }
 
             if self.stop {
                 return 0;
@@ -408,14 +424,7 @@ impl<'a> Search<'a> {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
-            let mut hasher = DefaultHasher::new();
-            nb.board().hash(&mut hasher);
-            let nhs = hasher.finish();
-            self.move_table.push(nhs);
-
             value = -self.q_search(&nb, ply + 1, -beta, -alpha);
-
-            self.move_table.pop();
 
             if self.stop {
                 return 0;
@@ -434,7 +443,12 @@ impl<'a> Search<'a> {
 
     #[inline]
     fn is_repetition(&self, position: u64) -> bool {
-        self.move_table.iter().rev().skip(1).any(|&x| x == position)
+        self.move_table
+            .iter()
+            .skip(*self.move_table_index_stack.last().unwrap())
+            .rev()
+            .skip(1)
+            .any(|&x| x == position)
     }
 
     #[inline]
@@ -467,7 +481,7 @@ impl<'a> Search<'a> {
     }
 
     pub fn get_pv(&self, board: &mut Chess, depth: Depth) -> String {
-        if depth == 0 {
+        if depth <= 1 {
             return "".to_owned();
         }
 
