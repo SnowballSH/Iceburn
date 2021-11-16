@@ -1,12 +1,12 @@
 import argparse
 import os
 
-THREADS = 2
+THREADS = 4
 
 control = "STC"
 
 if control == "STC":
-    GAMES = 30
+    GAMES = 50
     TIME = 10.0
     INC = 0.1
 elif control == "SSTC":

@@ -9,9 +9,15 @@ pub enum TTFlag {
     Lower = 4,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl Default for TTFlag {
+    fn default() -> Self {
+        TTFlag::INVALID
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct TTEntry {
-    pub key: u16,
+    pub key: u64,
     pub score: i32,
     pub bestmove: Option<Move>,
     pub depth: Depth,
@@ -27,7 +33,7 @@ impl TTEntry {
         flags: TTFlag,
     ) -> Self {
         TTEntry {
-            key: (hash >> 48) as u16,
+            key: hash,
             score,
             bestmove,
             depth,
@@ -36,19 +42,7 @@ impl TTEntry {
     }
 
     pub fn is_key_valid(&self, hash: u64) -> bool {
-        self.key == (hash >> 48) as u16
-    }
-}
-
-impl Default for TTEntry {
-    fn default() -> Self {
-        TTEntry {
-            key: 0,
-            score: 0,
-            bestmove: None,
-            depth: 0,
-            flag: TTFlag::INVALID,
-        }
+        self.key == hash
     }
 }
 
@@ -66,11 +60,14 @@ impl Default for TranspositionTable {
 
 impl TranspositionTable {
     pub fn with_size(size_mb: u64) -> Self {
-        let count = size_mb * 1024 * 1024 / std::mem::size_of::<TTEntry>() as u64;
-        let new_ttentry_count = count.next_power_of_two() / 2;
+        let hash_size = 0x100000 * size_mb;
+        let struct_size = std::mem::size_of::<TTEntry>() as u64;
+        let hash_entries = hash_size / struct_size;
+        let mut table = Vec::with_capacity(hash_entries as usize);
+        table.resize(hash_entries as usize, TTEntry::default());
         TranspositionTable {
-            table: vec![TTEntry::default(); new_ttentry_count as usize],
-            size: new_ttentry_count as usize,
+            table,
+            size: hash_entries as usize,
         }
     }
 

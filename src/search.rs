@@ -1,11 +1,10 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::str::FromStr;
 
+use array_macro::array;
 use lazy_static::lazy_static;
 
-use crate::chess::uci::Uci;
-use crate::chess::{Chess, Move, Position, Setup};
+use crate::chess::{CastlingMode, Chess, Move, Position, Setup};
 use crate::nnue::nnue_eval_normal;
 use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
@@ -41,6 +40,8 @@ pub struct Search<'a> {
     pub ordering_history: OrderingHistory,
     pub move_table: Vec<u64>,
     pub move_table_index_stack: Vec<usize>,
+    pub pv_length: [u32; 64],
+    pub pv_table: [[Option<Move>; 64]; 64],
 }
 
 impl<'a> Search<'a> {
@@ -56,6 +57,8 @@ impl<'a> Search<'a> {
             ordering_history: OrderingHistory::default(),
             move_table: Vec::with_capacity(80),
             move_table_index_stack: is,
+            pv_length: [0; 64],
+            pv_table: array![array![None; 64]; 64],
         }
     }
 
@@ -96,7 +99,7 @@ impl<'a> Search<'a> {
             } else if final_score >= beta {
                 beta = INF_SCORE;
             } else {
-                if let Some(res) = self.print_info(board, depth, cur_move, final_score) {
+                if let Some(res) = self.print_info(depth, cur_move, final_score) {
                     final_move = Some(res);
                 }
 
@@ -120,6 +123,10 @@ impl<'a> Search<'a> {
         mut alpha: i32,
         beta: i32,
     ) -> (Move, i32) {
+        let ply = 0;
+
+        self.pv_length[ply] = ply as u32;
+
         let moves = board.legal_moves();
 
         let in_check = board.is_check();
@@ -145,7 +152,9 @@ impl<'a> Search<'a> {
 
         let mut value;
         let mut orderer = MoveOrderer::new(moves);
-        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, 0) {
+        while let Some(m) =
+            orderer.next_move(&self.ordering_history, &hash_move, board, 0, &self.pv_table)
+        {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
@@ -170,16 +179,38 @@ impl<'a> Search<'a> {
                 break;
             }
 
+            // found a better move
             if value > alpha {
-                best_move = m;
+                best_move = m.clone();
+
                 if value >= beta {
                     self.tt.insert(
                         hs,
                         TTEntry::construct(hs, beta, Some(best_move.clone()), depth, TTFlag::Lower),
                     );
+
+                    if !m.is_capture() && !m.is_promotion() {
+                        self.ordering_history.add_killer(board, m.clone(), ply);
+                        self.ordering_history.add_history(&m, depth);
+                    }
+                    self.stats.beta_cutoffs += 1;
+
                     return (best_move.clone(), beta);
                 }
+
                 alpha = value;
+
+                // store PV
+                self.pv_table[ply][ply] = Some(best_move.clone());
+
+                // copy deeper pv
+                for next in ply + 1..self.pv_length[ply + 1] as usize {
+                    self.pv_table[ply][next] = self.pv_table[ply + 1][next].clone();
+                }
+
+                // adjust pv length
+                self.pv_length[ply] = self.pv_length[ply + 1];
+
                 self.tt.insert(
                     hs,
                     TTEntry::construct(hs, alpha, Some(best_move.clone()), depth, TTFlag::Upper),
@@ -210,6 +241,8 @@ impl<'a> Search<'a> {
             self.stop = true;
             return 0;
         }
+
+        self.pv_length[ply] = ply as u32;
 
         // Mate distance pruning
         // https://www.chessprogramming.org/Mate_Distance_Pruning
@@ -304,7 +337,13 @@ impl<'a> Search<'a> {
 
         let mut pidx = 0;
 
-        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
+        while let Some(m) = orderer.next_move(
+            &self.ordering_history,
+            &hash_move,
+            board,
+            ply,
+            &self.pv_table,
+        ) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
@@ -351,19 +390,33 @@ impl<'a> Search<'a> {
                 return 0;
             }
 
+            // fail hard beta cutoff
+            if value >= beta {
+                if !m.is_capture() && !m.is_promotion() {
+                    self.ordering_history.add_killer(board, m.clone(), ply);
+                    self.ordering_history.add_history(&m, depth);
+                }
+                self.stats.beta_cutoffs += 1;
+                tt_flag = TTFlag::Lower;
+                alpha = beta;
+                break;
+            }
+
             // Cutoff, TT storage
             if value > alpha {
                 best_move = Some(m.clone());
-                if value >= beta {
-                    if !m.is_capture() && !m.is_promotion() {
-                        self.ordering_history.add_killer(board, m.clone(), ply);
-                        self.ordering_history.add_history(&m, depth);
-                    }
-                    self.stats.beta_cutoffs += 1;
-                    tt_flag = TTFlag::Lower;
-                    alpha = beta;
-                    break;
+
+                // store PV
+                self.pv_table[ply][ply] = best_move.clone();
+
+                // copy deeper pv
+                for next in ply + 1..self.pv_length[ply + 1] as usize {
+                    self.pv_table[ply][next] = self.pv_table[ply + 1][next].clone();
                 }
+
+                // adjust pv length
+                self.pv_length[ply] = self.pv_length[ply + 1];
+
                 tt_flag = TTFlag::Exact;
                 alpha = value;
             }
@@ -420,7 +473,13 @@ impl<'a> Search<'a> {
         let moves = board.capture_moves();
         let mut orderer = MoveOrderer::new(moves);
 
-        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
+        while let Some(m) = orderer.next_move(
+            &self.ordering_history,
+            &hash_move,
+            board,
+            ply,
+            &self.pv_table,
+        ) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
@@ -480,40 +539,28 @@ impl<'a> Search<'a> {
         LMR_TABLE[(depth as usize).min(63)][move_index.min(63)]
     }
 
-    pub fn get_pv(&self, board: &mut Chess, depth: Depth) -> String {
-        if depth <= 1 {
-            return "".to_owned();
+    pub fn get_pv(&self) -> (String, Option<Move>) {
+        let mut result = String::new();
+        let mut firstpv = None;
+        for count in 0..self.pv_length[0] as usize {
+            if count == 0 {
+                firstpv = self.pv_table[0][count].clone();
+            }
+            result += &*self.pv_table[0][count]
+                .as_ref()
+                .unwrap()
+                .to_uci(CastlingMode::Standard)
+                .to_string();
+            result.push(' ');
         }
 
-        let mut hasher = DefaultHasher::new();
-        board.board().hash(&mut hasher);
-        let hs = hasher.finish();
+        result.pop();
 
-        let hash_move;
-        let tt_entry = self.tt.get(hs);
-        match tt_entry {
-            Some(tt_entry) => {
-                hash_move = tt_entry.bestmove.clone();
-                if hash_move == None {
-                    return "".to_owned();
-                }
-            }
-            None => {
-                return "".to_owned();
-            }
-        }
-
-        board.play_unchecked(&hash_move.clone().unwrap());
-
-        let pv = crate::chess::uci::Uci::from_standard(&hash_move.unwrap()).to_string()
-            + " "
-            + &*self.get_pv(board, depth - 1);
-
-        pv
+        (result, firstpv)
     }
 
-    pub fn print_info(&self, board: &Chess, depth: Depth, m: Move, score: i32) -> Option<Move> {
-        let pv = self.get_pv(&mut board.clone(), depth);
+    pub fn print_info(&self, depth: Depth, m: Move, score: i32) -> Option<Move> {
+        let (pv, bestmove) = self.get_pv();
         println!(
             "info currmove {} depth {} seldepth {} time {} score cp {} nodes {} nps {} pv {}",
             crate::chess::uci::Uci::from_standard(&m).to_string(),
@@ -525,16 +572,7 @@ impl<'a> Search<'a> {
             1000 * self.stats.total_nodes() / (self.timer.elapsed() + 1),
             pv
         );
-        if pv.len() > 0 {
-            Some(
-                Uci::from_str(pv.split(" ").collect::<Vec<&str>>()[0])
-                    .unwrap()
-                    .to_move(board)
-                    .unwrap(),
-            )
-        } else {
-            None
-        }
+        bestmove
     }
 
     // constants

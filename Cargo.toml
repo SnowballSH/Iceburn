@@ -9,4 +9,5 @@ edition = "2018"
 [dependencies]
 libloading = "0.7.0"
 lazy_static = "1.4.0"
+array-macro = "2.1.0"
 shakmaty = { git = "https://github.com/niklasf/shakmaty" }
