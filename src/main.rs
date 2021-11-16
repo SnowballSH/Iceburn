@@ -63,7 +63,7 @@ fn uci() {
                 tt = TranspositionTable::default();
             }
             "uci" => {
-                println!("id name Iceburn 2.0 DEV");
+                println!("id name Iceburn 2.0 DEV Nov15");
                 println!("id author SnowballSH");
                 println!("uciok");
             }

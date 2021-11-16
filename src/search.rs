@@ -9,7 +9,7 @@ use crate::nnue::nnue_eval_normal;
 use crate::ordering::{MoveOrderer, OrderingHistory};
 use crate::timeman::*;
 use crate::tt::{TTEntry, TTFlag, TranspositionTable};
-use crate::weight::{fast_eval, is_checkmate, INF_SCORE};
+use crate::weight::{fast_eval, fast_eval_endgame, is_checkmate, INF_SCORE};
 
 pub type Depth = i8;
 pub type Ply = usize;
@@ -152,9 +152,7 @@ impl<'a> Search<'a> {
 
         let mut value;
         let mut orderer = MoveOrderer::new(moves);
-        while let Some(m) =
-            orderer.next_move(&self.ordering_history, &hash_move, board, 0, &self.pv_table)
-        {
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, 0) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
@@ -179,24 +177,24 @@ impl<'a> Search<'a> {
                 break;
             }
 
+            if value >= beta {
+                self.tt.insert(
+                    hs,
+                    TTEntry::construct(hs, beta, Some(best_move.clone()), depth, TTFlag::Lower),
+                );
+
+                if !m.is_capture() && !m.is_promotion() {
+                    self.ordering_history.add_killer(board, m.clone(), ply);
+                    self.ordering_history.add_history(&m, depth);
+                }
+                self.stats.beta_cutoffs += 1;
+
+                return (best_move.clone(), beta);
+            }
+
             // found a better move
             if value > alpha {
                 best_move = m.clone();
-
-                if value >= beta {
-                    self.tt.insert(
-                        hs,
-                        TTEntry::construct(hs, beta, Some(best_move.clone()), depth, TTFlag::Lower),
-                    );
-
-                    if !m.is_capture() && !m.is_promotion() {
-                        self.ordering_history.add_killer(board, m.clone(), ply);
-                        self.ordering_history.add_history(&m, depth);
-                    }
-                    self.stats.beta_cutoffs += 1;
-
-                    return (best_move.clone(), beta);
-                }
 
                 alpha = value;
 
@@ -279,9 +277,11 @@ impl<'a> Search<'a> {
         let hs = hasher.finish();
 
         // Fifty-move rule and Repetitions
-        if board.halfmoves() >= 100 || self.is_repetition(hs) {
-            self.stats.leafs += 1;
-            return 0;
+        if board.halfmoves() > 6 {
+            if board.halfmoves() >= 100 || self.is_repetition(hs) {
+                self.stats.leafs += 1;
+                return 0;
+            }
         }
 
         // Transposition Table
@@ -337,13 +337,7 @@ impl<'a> Search<'a> {
 
         let mut pidx = 0;
 
-        while let Some(m) = orderer.next_move(
-            &self.ordering_history,
-            &hash_move,
-            board,
-            ply,
-            &self.pv_table,
-        ) {
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 
@@ -448,7 +442,11 @@ impl<'a> Search<'a> {
         self.sel_depth = self.sel_depth.max(ply);
         self.stats.qnodes += 1;
 
-        let value = nnue_eval_normal(board);
+        let value = if board.fullmoves().get() >= 100 {
+            fast_eval_endgame(board)
+        } else {
+            nnue_eval_normal(board)
+        };
 
         if value >= beta {
             self.stats.qleafs += 1;
@@ -473,13 +471,7 @@ impl<'a> Search<'a> {
         let moves = board.capture_moves();
         let mut orderer = MoveOrderer::new(moves);
 
-        while let Some(m) = orderer.next_move(
-            &self.ordering_history,
-            &hash_move,
-            board,
-            ply,
-            &self.pv_table,
-        ) {
+        while let Some(m) = orderer.next_move(&self.ordering_history, &hash_move, board, ply) {
             let mut nb = board.clone();
             nb.play_unchecked(&m);
 

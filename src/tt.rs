@@ -17,7 +17,7 @@ impl Default for TTFlag {
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct TTEntry {
-    pub key: u64,
+    pub key: u16,
     pub score: i32,
     pub bestmove: Option<Move>,
     pub depth: Depth,
@@ -33,7 +33,7 @@ impl TTEntry {
         flags: TTFlag,
     ) -> Self {
         TTEntry {
-            key: hash,
+            key: (hash >> 48) as u16,
             score,
             bestmove,
             depth,
@@ -41,8 +41,9 @@ impl TTEntry {
         }
     }
 
+    #[inline(always)]
     pub fn is_key_valid(&self, hash: u64) -> bool {
-        self.key == hash
+        self.key == (hash >> 48) as u16
     }
 }
 
@@ -54,7 +55,7 @@ pub struct TranspositionTable {
 
 impl Default for TranspositionTable {
     fn default() -> Self {
-        Self::with_size(16)
+        Self::with_size(32)
     }
 }
 
